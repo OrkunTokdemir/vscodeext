@@ -218,3 +218,10 @@ export async function fetchWithAbort(
     throw error;
   });
 }
+
+export async function waitForQtCpp() {
+  const qtcpp = vscode.extensions.getExtension('theqtcompany.qt-cpp');
+  if (qtcpp) {
+    return qtcpp.activate();
+  }
+}
