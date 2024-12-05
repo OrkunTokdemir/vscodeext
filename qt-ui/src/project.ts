@@ -15,6 +15,7 @@ import {
   locateDesignerFromQtPaths
 } from '@/util';
 import { CONF_CUSTOM_WIDGETS_DESIGNER_EXE_PATH } from '@/constants';
+import { coreAPI } from '@/extension';
 
 const logger = createLogger('project');
 
@@ -163,6 +164,18 @@ export class UIProject implements Project {
   }
   get folder() {
     return this._folder;
+  }
+  public getConfigValues() {
+    const selectedKitPath = coreAPI?.getValue<string>(
+      this.folder,
+      'selectedKitPath'
+    );
+    void this.setBinDir(selectedKitPath);
+    this.qtpathsExe = coreAPI?.getValue<string>(this.folder, 'selectedQtPaths');
+    this.workspaceType = coreAPI?.getValue<QtWorkspaceType>(
+      this.folder,
+      'workspaceType'
+    );
   }
 
   private static checkCustomDesignerExePath(

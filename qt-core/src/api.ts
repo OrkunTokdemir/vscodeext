@@ -12,7 +12,8 @@ import {
   QtWorkspaceConfig,
   QtWorkspaceConfigMessage,
   QtInfo,
-  QtAdditionalPath
+  QtAdditionalPath,
+  ConfigType
 } from 'qt-lib';
 
 const logger = createLogger('api');
@@ -33,28 +34,6 @@ export class CoreAPIImpl implements CoreAPI {
 
   public get onValueChanged() {
     return this._onValueChanged.event;
-  }
-
-  private processMessage(message: QtWorkspaceConfigMessage) {
-    let changed = false;
-    for (const [key, value] of message.config) {
-      if (value !== this._configs.get(message.workspaceFolder)?.get(key)) {
-        logger.info('Config changed:', key);
-        const config = this._configs.get(message.workspaceFolder);
-        if (config) {
-          config.set(key, value);
-        } else {
-          logger.info('New config: ' + JSON.stringify(value));
-          const newConfig: QtWorkspaceConfig = new Map();
-          newConfig.set(key, value);
-          this._configs.set(message.workspaceFolder, newConfig);
-        }
-        changed = true;
-      }
-    }
-    if (changed) {
-      this._onValueChanged.fire(message);
-    }
   }
 
   private static obtainArch(content: string) {
@@ -112,8 +91,26 @@ export class CoreAPIImpl implements CoreAPI {
     return ret;
   }
 
-  update(message: QtWorkspaceConfigMessage) {
-    this.processMessage(message);
+  notify(message: QtWorkspaceConfigMessage) {
+    if (message.config.size === 0) {
+      throw new Error('Empty config');
+    }
+    this._onValueChanged.fire(message);
+  }
+
+  setValue(
+    folder: vscode.WorkspaceFolder | string,
+    key: string,
+    value: ConfigType
+  ) {
+    const workspaceConfig = this._configs.get(folder);
+    if (workspaceConfig) {
+      workspaceConfig.set(key, value);
+    } else {
+      const newConfig: QtWorkspaceConfig = new Map();
+      newConfig.set(key, value);
+      this._configs.set(folder, newConfig);
+    }
   }
 
   getValue<T>(

@@ -6,7 +6,11 @@ import * as cmakeApi from 'vscode-cmake-tools';
 
 import { WorkspaceStateManager } from '@/state';
 import { coreAPI, kitManager } from '@/extension';
-import { createLogger, QtWorkspaceConfigMessage } from 'qt-lib';
+import {
+  createLogger,
+  QtWorkspaceConfigMessage,
+  QtWorkspaceType
+} from 'qt-lib';
 import { Project, ProjectManager } from 'qt-lib';
 import {
   getQtInsRoot,
@@ -60,11 +64,21 @@ export class CppProject implements Project {
               }
               const selectedKitPath = kit ? getQtInsRoot(kit) : undefined;
               const message = new QtWorkspaceConfigMessage(this.folder);
-              message.config.set('selectedKitPath', selectedKitPath);
+              coreAPI?.setValue(
+                this.folder,
+                'selectedKitPath',
+                selectedKitPath
+              );
+              message.config.add('selectedKitPath');
 
               const selectedQtPaths = kit ? getQtPathsExe(kit) : undefined;
-              message.config.set('selectedQtPaths', selectedQtPaths);
-              coreAPI?.update(message);
+              coreAPI?.setValue(
+                this.folder,
+                'selectedQtPaths',
+                selectedQtPaths
+              );
+              message.config.add('selectedQtPaths');
+              coreAPI?.notify(message);
             }
           }
         );
@@ -79,8 +93,9 @@ export class CppProject implements Project {
             );
             this._buildDir = currentBuildDir;
             const message = new QtWorkspaceConfigMessage(this.folder);
-            message.config.set('buildDir', currentBuildDir);
-            coreAPI?.update(message);
+            coreAPI?.setValue(this.folder, 'buildDir', currentBuildDir);
+            message.config.add('buildDir');
+            coreAPI?.notify(message);
           }
         }
       );
@@ -88,7 +103,24 @@ export class CppProject implements Project {
       this._disposables.push(onSelectedConfigurationChangedHandler);
     }
   }
-
+  async initConfigValues() {
+    if (!coreAPI) {
+      throw new Error('CoreAPI is not initialized');
+    }
+    const folder = this.folder;
+    const kit = await getSelectedKit(folder, true);
+    const message = new QtWorkspaceConfigMessage(folder);
+    const selectedKitPath = kit ? getQtInsRoot(kit) : undefined;
+    logger.info(
+      `Setting selected kit path for ${folder.uri.fsPath} to ${selectedKitPath}`
+    );
+    coreAPI.setValue(folder, 'selectedKitPath', selectedKitPath);
+    const selectedQtPaths = kit ? getQtPathsExe(kit) : undefined;
+    coreAPI.setValue(folder, 'selectedQtPaths', selectedQtPaths);
+    coreAPI.setValue(folder, 'workspaceType', QtWorkspaceType.CMakeExt);
+    coreAPI.setValue(folder, 'buildDir', this.buildDir);
+    logger.info('Updating coreAPI with message:', message as unknown as string);
+  }
   public getStateManager() {
     return this._stateManager;
   }
@@ -112,9 +144,11 @@ export class CppProjectManager extends ProjectManager<CppProject> {
     super(context, createCppProject);
 
     this._disposables.push(
-      this.onProjectAdded((project: CppProject) => {
+      this.onProjectAdded(async (project: CppProject) => {
         logger.info('Adding project:', project.folder.uri.fsPath);
+        await project.initConfigValues();
         kitManager.addProject(project);
+        void kitManager.checkForQtInstallations(project);
       })
     );
 
@@ -123,5 +157,10 @@ export class CppProjectManager extends ProjectManager<CppProject> {
         kitManager.removeProject(project);
       })
     );
+  }
+  initConfigValues() {
+    for (const project of this.getProjects()) {
+      void project.initConfigValues();
+    }
   }
 }

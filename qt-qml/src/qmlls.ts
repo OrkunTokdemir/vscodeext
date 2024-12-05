@@ -41,6 +41,11 @@ export enum DecisionCode {
   ErrorOccured
 }
 
+export enum QmllsStatus {
+  running,
+  stopped
+}
+
 export async function setDoNotAskForDownloadingQmlls(value: boolean) {
   await vscode.workspace
     .getConfiguration(EXTENSION_ID)
@@ -169,14 +174,17 @@ export class Qmlls {
 
     if (options?.restart) {
       void projectManager.startQmlls();
+      return QmllsStatus.running;
     }
+    return QmllsStatus.stopped;
   }
   public static async checkAssetAndDecide() {
     // Do not show the progress bar during the startup
     const result = await fetchAssetAndDecide({ silent: true });
     if (result.code === DecisionCode.NeedToUpdate && result.asset) {
-      await Qmlls.install(result.asset);
+      return Qmlls.install(result.asset);
     }
+    return QmllsStatus.stopped;
   }
 
   public async start() {

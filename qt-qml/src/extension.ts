@@ -16,7 +16,7 @@ import {
 import { registerRestartQmllsCommand } from '@cmd/restart-qmlls';
 import { registerDownloadQmllsCommand } from '@cmd/download-qmlls';
 import { registerCheckQmllsUpdateCommand } from '@cmd/check-qmlls-update';
-import { getDoNotAskForDownloadingQmlls, Qmlls } from '@/qmlls';
+import { getDoNotAskForDownloadingQmlls, Qmlls, QmllsStatus } from '@/qmlls';
 import { EXTENSION_ID } from '@/constants';
 import { QMLProjectManager, createQMLProject } from '@/project';
 import { registerResetCommand } from '@cmd/reset';
@@ -62,10 +62,19 @@ export async function activate(context: vscode.ExtensionContext) {
     registerResetCommand()
   );
   telemetry.sendEvent(`activated`);
+  projectManager.getConfigValues();
+  projectManager.updateQmllsParams();
+  void startQmlls();
+}
 
+async function startQmlls() {
   const shouldCheck = !getDoNotAskForDownloadingQmlls();
+  let result: QmllsStatus | undefined;
   if (shouldCheck) {
-    void Qmlls.checkAssetAndDecide();
+    result = await Qmlls.checkAssetAndDecide();
+  }
+  if (!shouldCheck || result === QmllsStatus.stopped) {
+    void projectManager.startQmlls();
   }
 }
 
@@ -90,7 +99,10 @@ function processMessage(message: QtWorkspaceConfigMessage) {
     let updateQmlls = false;
     for (const key of message.config.keys()) {
       if (key === 'selectedKitPath') {
-        const selectedKitPath = message.get<string>('selectedKitPath');
+        const selectedKitPath = coreAPI?.getValue<string>(
+          message.workspaceFolder,
+          'selectedKitPath'
+        );
         if (selectedKitPath !== project.kitPath) {
           updateQmlls = true;
           project.kitPath = selectedKitPath;
@@ -98,7 +110,10 @@ function processMessage(message: QtWorkspaceConfigMessage) {
         continue;
       }
       if (key === 'selectedQtPaths') {
-        const selectedQtPaths = message.get<string>('selectedQtPaths');
+        const selectedQtPaths = coreAPI?.getValue<string>(
+          message.workspaceFolder,
+          'selectedQtPaths'
+        );
         if (selectedQtPaths !== project.qtpathsExe) {
           updateQmlls = true;
           project.qtpathsExe = selectedQtPaths;
@@ -106,7 +121,10 @@ function processMessage(message: QtWorkspaceConfigMessage) {
         continue;
       }
       if (key === 'buildDir') {
-        const buildDir = message.get<string>('buildDir');
+        const buildDir = coreAPI?.getValue<string>(
+          message.workspaceFolder,
+          'buildDir'
+        );
         if (buildDir !== project.buildDir) {
           updateQmlls = true;
           project.buildDir = buildDir;
@@ -114,7 +132,8 @@ function processMessage(message: QtWorkspaceConfigMessage) {
       }
     }
     if (updateQmlls) {
-      project.updateQmlls();
+      project.updateQmllsParams();
+      void project.qmlls.restart();
     }
   } catch (e) {
     const err = e as Error;

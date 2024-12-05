@@ -6,7 +6,6 @@ import * as vscode from 'vscode';
 import {
   CoreAPI,
   getCoreApi,
-  QtWorkspaceType,
   createLogger,
   initLogger,
   QtWorkspaceConfigMessage,
@@ -16,11 +15,6 @@ import {
   QtAdditionalPath,
   telemetry
 } from 'qt-lib';
-import {
-  getQtInsRoot,
-  getQtPathsExe,
-  getSelectedKit
-} from '@cmd/register-qt-path';
 import { registerMinGWgdbCommand } from '@cmd/mingw-gdb';
 import { registerResetCommand } from '@cmd/reset-qt-ext';
 import { registerNatvisCommand } from '@cmd/natvis';
@@ -58,8 +52,8 @@ export async function activate(context: vscode.ExtensionContext) {
   if (vscode.workspace.workspaceFolders !== undefined) {
     for (const folder of vscode.workspace.workspaceFolders) {
       const project = await createCppProject(folder, context);
-      projectManager.addProject(project, true);
-      kitManager.addProject(project, true);
+      projectManager.addProject(project);
+      kitManager.addProject(project);
     }
   }
 
@@ -89,8 +83,8 @@ export async function activate(context: vscode.ExtensionContext) {
   void tryToUseCMakeFromQtTools();
   await kitManager.checkForAllQtInstallations();
 
-  await initCoreValues();
-  logger.info('Core values initialized');
+  await initConfigValues();
+  logger.info('Config values initialized');
 }
 
 export function deactivate() {
@@ -102,26 +96,9 @@ export function deactivate() {
   }
 }
 
-export async function initCoreValues() {
-  if (!coreAPI) {
-    throw new Error('CoreAPI is not initialized');
-  }
-
+export async function initConfigValues() {
   for (const project of projectManager.getProjects()) {
-    const folder = project.folder;
-    const kit = await getSelectedKit(folder, true);
-    const message = new QtWorkspaceConfigMessage(folder);
-    const selectedKitPath = kit ? getQtInsRoot(kit) : undefined;
-    logger.info(
-      `Setting selected kit path for ${folder.uri.fsPath} to ${selectedKitPath}`
-    );
-    message.config.set('selectedKitPath', selectedKitPath);
-    const selectedQtPaths = kit ? getQtPathsExe(kit) : undefined;
-    message.config.set('selectedQtPaths', selectedQtPaths);
-    message.config.set('workspaceType', QtWorkspaceType.CMakeExt);
-    message.config.set('buildDir', project.buildDir ?? '');
-    logger.info('Updating coreAPI with message:', message as unknown as string);
-    coreAPI.update(message);
+    await project.initConfigValues();
   }
 }
 
@@ -141,14 +118,21 @@ async function processMessage(message: QtWorkspaceConfigMessage) {
   }
   for (const key of message.config.keys()) {
     if (key === QtInsRootConfigName) {
-      const value = message.get<string>(QtInsRootConfigName) ?? '';
+      const value =
+        coreAPI?.getValue<string>(
+          message.workspaceFolder,
+          QtInsRootConfigName
+        ) ?? '';
       await kitManager.onQtInstallationRootChanged(value, project?.folder);
       continue;
     }
 
     if (key === AdditionalQtPathsName) {
       const additionalQtPaths =
-        message.get<QtAdditionalPath[]>(AdditionalQtPathsName) ?? [];
+        coreAPI?.getValue<QtAdditionalPath[]>(
+          message.workspaceFolder,
+          AdditionalQtPathsName
+        ) ?? [];
       await kitManager.onQtPathsChanged(additionalQtPaths, project?.folder);
       continue;
     }

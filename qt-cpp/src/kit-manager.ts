@@ -148,11 +148,8 @@ export class KitManager {
     this.globalStateManager = new GlobalStateManager(context);
   }
 
-  public addProject(project: CppProject, lazy = false) {
+  public addProject(project: CppProject) {
     this.projects.add(project);
-    if (!lazy) {
-      void this.checkForQtInstallations(project);
-    }
   }
 
   public removeProject(project: CppProject) {
@@ -190,7 +187,7 @@ export class KitManager {
 
   // If the project parameter is undefined, it means that it is a global check
   // otherwise, it is a workspace folder check
-  private async checkForQtInstallations(project?: CppProject) {
+  public async checkForQtInstallations(project?: CppProject) {
     const currentQtInsRoot = project
       ? KitManager.getWorkspaceFolderQtInsRoot(project.folder)
       : getCurrentGlobalQtInstallationRoot();

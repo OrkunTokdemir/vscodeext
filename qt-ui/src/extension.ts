@@ -41,7 +41,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   projectManager = new ProjectManager<UIProject>(context, createUIProject);
   projectManager.onProjectAdded(async (project) => {
-    logger.info('Project added:', project.folder.uri.fsPath);
+    logger.info('Adding project:', project.folder.uri.fsPath);
     const selectedKitPath = coreAPI?.getValue<string>(
       project.folder,
       'selectedKitPath'
@@ -51,13 +51,10 @@ export async function activate(context: vscode.ExtensionContext) {
       'selectedQtPaths'
     );
 
-    const workspaceType = coreAPI?.getValue<QtWorkspaceType>(
+    project.workspaceType = coreAPI?.getValue<QtWorkspaceType>(
       project.folder,
       'workspaceType'
     );
-    if (workspaceType) {
-      project.workspaceType = workspaceType;
-    }
 
     if (selectedKitPath) {
       await project.setBinDir(selectedKitPath);
@@ -91,7 +88,14 @@ export async function activate(context: vscode.ExtensionContext) {
       openWidgetDesigner
     )
   );
+  getConfigValues();
   telemetry.sendEvent(`activated`);
+}
+
+function getConfigValues() {
+  for (const project of projectManager.getProjects()) {
+    project.getConfigValues();
+  }
 }
 
 export function deactivate() {
@@ -113,23 +117,30 @@ function processMessage(message: QtWorkspaceConfigMessage) {
 
   for (const key of message.config.keys()) {
     if (key === 'selectedKitPath') {
-      const selectedKitPath = message.get<string>('selectedKitPath');
+      const selectedKitPath = coreAPI?.getValue<string>(
+        message.workspaceFolder,
+        'selectedKitPath'
+      );
       if (selectedKitPath !== project.binDir) {
         void project.setBinDir(selectedKitPath);
       }
       continue;
     }
     if (key === 'selectedQtPaths') {
-      const selectedQtPaths = message.get<string>('selectedQtPaths');
+      const selectedQtPaths = coreAPI?.getValue<string>(
+        message.workspaceFolder,
+        'selectedQtPaths'
+      );
       if (selectedQtPaths !== project.qtpathsExe) {
         project.qtpathsExe = selectedQtPaths;
       }
       continue;
     }
     if (key === 'workspaceType') {
-      project.workspaceType = message.config.get(
+      project.workspaceType = coreAPI?.getValue<QtWorkspaceType>(
+        message.workspaceFolder,
         'workspaceType'
-      ) as QtWorkspaceType;
+      );
     }
   }
 }

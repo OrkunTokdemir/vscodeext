@@ -29,11 +29,8 @@ export class ProjectManager<ProjectType extends Project> {
     this.watchProjects(context);
   }
 
-  public addProject(project: ProjectType, lazy = false) {
+  public addProject(project: ProjectType) {
     this.projects.add(project);
-    if (!lazy) {
-      this._addEmitter.fire(project);
-    }
   }
 
   public removeProject(project: ProjectType) {
@@ -88,6 +85,7 @@ export class ProjectManager<ProjectType extends Project> {
           continue;
         }
         this.addProject(project);
+        this._addEmitter.fire(project);
       }
     });
   }
