@@ -11,8 +11,7 @@ import {
   GlobalWorkspace,
   QtInsRootConfigName,
   QtAdditionalPath,
-  compareQtAdditionalPath,
-  QtWorkspaceConfigMessage
+  compareQtAdditionalPath
 } from 'qt-lib';
 import { Project, ProjectManager } from 'qt-lib';
 import { convertAdditionalQtPaths, getConfiguration } from '@/util';
@@ -96,17 +95,17 @@ export class CoreProject implements Project {
 
   public initConfigValues() {
     const folder = this.folder;
-    const message = new QtWorkspaceConfigMessage(folder);
-    message.config.set(
-      QtInsRootConfigName,
-      CoreProjectManager.getWorkspaceFolderQtInsRoot(folder)
+    const qtInsRoot = CoreProjectManager.getWorkspaceFolderQtInsRoot(folder);
+    coreAPI?.setValue(folder, QtInsRootConfigName, qtInsRoot);
+    logger.info(
+      `Setting Qt installation root for ${folder.uri.fsPath} to: ${qtInsRoot}`
     );
-    message.config.set(
-      AdditionalQtPathsName,
-      CoreProjectManager.getWorkspaceFolderAdditionalQtPaths(folder)
+    const additionalQtPaths =
+      CoreProjectManager.getWorkspaceFolderAdditionalQtPaths(folder);
+    coreAPI?.setValue(folder, AdditionalQtPathsName, additionalQtPaths);
+    logger.info(
+      `Setting additional Qt paths for ${folder.uri.fsPath} to: ${additionalQtPaths.join(', ')}`
     );
-    logger.info('Updating coreAPI with message:', message as unknown as string);
-    coreAPI?.update(message);
   }
 
   dispose() {

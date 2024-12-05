@@ -194,8 +194,9 @@ export function onQtInsRootUpdated(
   logger.info(`Qt installation root updated: "${newQtInstallationRoot}"`);
 
   const message = new QtWorkspaceConfigMessage(folder);
-  message.config.set(QtInsRootConfigName, newQtInstallationRoot);
-  coreAPI?.update(message);
+  coreAPI?.setValue(folder, QtInsRootConfigName, newQtInstallationRoot);
+  message.config.add(QtInsRootConfigName);
+  coreAPI?.notify(message);
 }
 
 export function onAdditionalQtPathsUpdated(
@@ -216,6 +217,7 @@ export function onAdditionalQtPathsUpdated(
   logger.info('Additional Qt Paths updated: ' + JSON.stringify(newPaths));
 
   const message = new QtWorkspaceConfigMessage(folder);
-  message.config.set(AdditionalQtPathsName, newPaths);
-  coreAPI?.update(message);
+  coreAPI?.setValue(folder, AdditionalQtPathsName, newPaths);
+  message.config.add(AdditionalQtPathsName);
+  coreAPI?.notify(message);
 }

@@ -20,6 +20,12 @@ export async function createQMLProject(
 export class QMLProjectManager extends ProjectManager<QMLProject> {
   constructor(override readonly context: vscode.ExtensionContext) {
     super(context, createQMLProject);
+    this.onProjectAdded((project) => {
+      logger.info('Adding project:', project.folder.uri.fsPath);
+      project.getConfigValues();
+      project.updateQmllsParams();
+      void project.qmlls.start();
+    });
   }
   async stopQmlls() {
     const promises = [];
@@ -42,6 +48,16 @@ export class QMLProjectManager extends ProjectManager<QMLProject> {
     }
     return Promise.all(promises);
   }
+  updateQmllsParams() {
+    for (const project of this.getProjects()) {
+      project.updateQmllsParams();
+    }
+  }
+  getConfigValues() {
+    for (const project of this.getProjects()) {
+      project.getConfigValues();
+    }
+  }
 }
 // Project class represents a workspace folder in the extension.
 export class QMLProject implements Project {
@@ -55,7 +71,9 @@ export class QMLProject implements Project {
   ) {
     logger.info('Creating project:', _folder.uri.fsPath);
     this._qmlls = new Qmlls(_folder);
-    void this.qmlls.start();
+  }
+  async startQmlls() {
+    return this.qmlls.start();
   }
   get kitPath() {
     return this._kitPath;
@@ -69,7 +87,14 @@ export class QMLProject implements Project {
   set qtpathsExe(qtpathsExe: string | undefined) {
     this._qtpathsExe = qtpathsExe;
   }
-  updateQmlls() {
+
+  getConfigValues() {
+    this.kitPath = coreAPI?.getValue<string>(this.folder, 'selectedKitPath');
+    this.qtpathsExe = coreAPI?.getValue<string>(this.folder, 'selectedQtPaths');
+    this.buildDir = coreAPI?.getValue<string>(this.folder, 'buildDir');
+  }
+
+  updateQmllsParams() {
     this.qmlls.clearImportPaths();
     if (this.kitPath) {
       this.qmlls.addImportPath(path.join(this.kitPath, 'qml'));
@@ -84,7 +109,6 @@ export class QMLProject implements Project {
       }
       this.qmlls.addImportPath(qmlImportPath);
     }
-    void this.qmlls.restart();
   }
   set buildDir(buildDir: string | undefined) {
     this._buildDir = buildDir;

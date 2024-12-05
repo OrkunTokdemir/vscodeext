@@ -27,24 +27,21 @@ export function compareQtAdditionalPath(
   return a.name.localeCompare(b.name);
 }
 
-export type QtWorkspaceConfig = Map<
-  string,
-  string | QtAdditionalPath[] | QtWorkspaceType | undefined
->;
+export type ConfigType =
+  | string
+  | QtAdditionalPath[]
+  | QtWorkspaceType
+  | undefined;
 
+export type QtWorkspaceConfig = Map<string, ConfigType>;
+
+type MessageConfigs = Set<string>;
 export class QtWorkspaceConfigMessage {
   workspaceFolder: vscode.WorkspaceFolder | string;
-  config: QtWorkspaceConfig;
+  config: MessageConfigs;
   constructor(folder?: vscode.WorkspaceFolder | string) {
     this.workspaceFolder = folder ?? 'global';
-    this.config = new Map() as QtWorkspaceConfig;
-  }
-  get<T>(key: string, defaultValue?: T): T | undefined {
-    const value = this.config.get(key);
-    if (value === undefined) {
-      return defaultValue;
-    }
-    return value as T;
+    this.config = new Set() as MessageConfigs;
   }
 }
 
@@ -75,11 +72,16 @@ export class QtInfo {
 }
 
 export interface CoreAPI {
-  update(config: QtWorkspaceConfigMessage): void;
+  notify(config: QtWorkspaceConfigMessage): void;
   getValue<T>(
     folder: vscode.WorkspaceFolder | string,
     key: string
   ): T | undefined;
+  setValue(
+    folder: vscode.WorkspaceFolder | string,
+    key: string,
+    value: ConfigType
+  ): void;
   onValueChanged: vscode.Event<QtWorkspaceConfigMessage>;
   getQtInfo(qtPathsExecutable: QtAdditionalPath): QtInfo | undefined;
   getQtInfoFromPath(qtPathsExe: string): QtInfo | undefined;
