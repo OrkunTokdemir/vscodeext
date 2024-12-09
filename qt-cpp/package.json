@@ -226,7 +226,6 @@
   ],
   "extensionDependencies": [
     "theqtcompany.qt-core",
-    "theqtcompany.qt-ui",
     "ms-vscode.cmake-tools"
   ],
   "scripts": {
