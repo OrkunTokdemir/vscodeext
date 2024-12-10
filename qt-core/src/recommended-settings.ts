@@ -14,7 +14,6 @@ interface RecommendedSetting {
 }
 
 export function registerSetRecommendedSettingsCommand() {
-  telemetry.sendAction('setRecommendedSettings');
   const recommendedSettings: RecommendedSetting[] = [
     {
       extensionId: 'cmake',
@@ -34,6 +33,7 @@ export function registerSetRecommendedSettingsCommand() {
   const recommendedSettingsCommand = vscode.commands.registerCommand(
     `${EXTENSION_ID}.setRecommendedSettings`,
     () => {
+      telemetry.sendAction('setRecommendedSettings');
       for (const { extensionId, setting, value } of recommendedSettings) {
         void vscode.workspace
           .getConfiguration(extensionId)
