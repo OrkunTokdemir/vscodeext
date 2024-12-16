@@ -66,10 +66,20 @@ export function isMultiWorkspace(): boolean {
 }
 
 export async function locateQmakeExeFilePath(selectedQtPath: string) {
-  return (
-    (await existing(path.join(selectedQtPath, 'bin', 'qmake' + OSExeSuffix))) ||
-    (await existing(path.join(selectedQtPath, 'bin', 'qmake6' + OSExeSuffix)))
-  );
+  const qmakeVersions = ['qmake', 'qmake6'];
+  const suffixes = [OSExeSuffix];
+  if (IsWindows) {
+    suffixes.push('.bat');
+  }
+  for (const qmake of qmakeVersions) {
+    for (const suffix of suffixes) {
+      const qmakePath = path.join(selectedQtPath, 'bin', qmake + suffix);
+      if (await exists(qmakePath)) {
+        return qmakePath;
+      }
+    }
+  }
+  return undefined;
 }
 
 export function compareVersions(version1: string, version2: string) {

@@ -58,6 +58,9 @@ export async function locateDesigner(selectedQtPath: string) {
     return designerExePath;
   }
   const qmakeExePath = await locateQmakeExeFilePath(selectedQtPath);
+  if (!qmakeExePath) {
+    return '';
+  }
   const designer = extractDesignerExePathFromQtPath(qmakeExePath);
   if (await designer) {
     return designer;
