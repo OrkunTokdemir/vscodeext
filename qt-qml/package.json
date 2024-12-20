@@ -155,7 +155,81 @@
           "scope": "machine"
         }
       }
-    }
+    },
+    "breakpoints": [
+      {
+        "language": "qml"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "qml",
+        "label": "QML Debugger",
+        "runtime": "node",
+        "configurationAttributes": {
+          "attach": {
+            "required": [
+              "host",
+              "port"
+            ],
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "Hostname (or ip address) of the target program's debug service.",
+                "default": "localhost"
+              },
+              "port": {
+                "type": "number",
+                "description": "Port of the target program's debug service."
+              },
+              "paths": {
+                "description": "List of qml source folders resource paths (qrc:/) to physical path mappings.",
+                "type": "object",
+                "patternProperties": {
+                  ".*": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "trace": {
+                "type": "boolean",
+                "description": "Enable logging of the Debug Adapter Protocol.",
+                "default": true
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "qml",
+            "request": "attach",
+            "name": "Attach to QML Debugger",
+            "host": "localhost",
+            "port": "^\"\\${command:qt-qml.debugPort}\"",
+            "paths": []
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "%qt-qml.debug.qmlDebugging.label%",
+            "description": "%qt-qml.debug.qmlDebugging.description%",
+            "body": {
+              "name": "Debug QML Application",
+              "type": "qml",
+              "request": "attach",
+              "host": "localhost",
+              "port": "^\"\\${command:qt-qml.debugPort}\"",
+              "paths": {
+                "qrc:/qml": "^\"\\${workspaceFolder}/<Folder that contain qml files>\""
+              }
+            }
+          }
+        ]
+      }
+    ]
   },
   "taskDefinitions": [
     {
@@ -198,8 +272,11 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@vscode/debugadapter": "^1.68.0",
+    "@vscode/debugprotocol": "^1.68.0",
     "@vscode/l10n": "^0.0.16",
     "module-alias": "^2.2.3",
+    "promise-socket": "^8.0.0",
     "qt-lib": "file:../qt-lib",
     "typescript": "^5.6.3",
     "untildify": "^5.0.0",

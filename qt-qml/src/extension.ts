@@ -20,6 +20,7 @@ import { getDoNotAskForDownloadingQmlls, Qmlls, QmllsStatus } from '@/qmlls';
 import { EXTENSION_ID } from '@/constants';
 import { QMLProjectManager, createQMLProject } from '@/project';
 import { registerResetCommand } from '@cmd/reset';
+import { registerQmlDebugAdapterFactory } from '@debug/debug-adapter';
 
 export let projectManager: QMLProjectManager;
 export let coreAPI: CoreAPI | undefined;
@@ -59,7 +60,8 @@ export async function activate(context: vscode.ExtensionContext) {
     registerCheckQmllsUpdateCommand(),
     registerDownloadQmllsCommand(),
     registerColorProvider(),
-    registerResetCommand()
+    registerResetCommand(),
+    registerQmlDebugAdapterFactory()
   );
   telemetry.sendEvent(`activated`);
   projectManager.getConfigValues();

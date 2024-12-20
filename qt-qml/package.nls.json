@@ -1,5 +1,7 @@
 {
   "qt-qml.command.restartQmlls.title": "Restart QML language server",
   "qt-qml.command.checkQmllsUpdate.title": "Check for QML language server update",
-  "qt-qml.command.downloadQmlls.title": "Download the most recent QML language server"
+  "qt-qml.command.downloadQmlls.title": "Download the most recent QML language server",
+  "qt-qml.debug.qmlDebugging.label": "Qt: Debug QML",
+  "qt-qml.debug.qmlDebugging.description": "Launch a QML application with the QML Debugger"
 }

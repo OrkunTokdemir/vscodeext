@@ -24,6 +24,17 @@ const extensionConfig = {
   external: ['vscode']
 };
 
+// const debugAdapterConfig = {
+//   ...baseConfig,
+//   platform: 'node',
+//   mainFields: ['module', 'main'],
+//   tsconfig: './tsconfig.json',
+//   format: 'cjs',
+//   entryPoints: ['./src/debug/debug-adapter.ts'],
+//   outfile: './out/debug/debug-adapter.js',
+//   external: ['vscode']
+// };
+
 async function execCmd(command) {
   return new Promise((resolve, reject) => {
     exec(command, (error, stdout, stderr) => {
@@ -66,9 +77,15 @@ await execCmd('npx tsc --noEmit').then(
       });
       await extCtx.watch();
       await extCtx.dispose();
+      // const debugAdapterCtx = await context({
+      //   ...extensionConfig
+      // });
+      // await debugAdapterCtx.watch();
+      // await debugAdapterCtx.dispose();
       console.log('[watch] build finished');
     } else {
       await build(extensionConfig);
+      // await build(debugAdapterConfig);
       console.log('build complete');
     }
   } catch (err) {

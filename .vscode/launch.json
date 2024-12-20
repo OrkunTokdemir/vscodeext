@@ -37,6 +37,15 @@
       "outFiles": ["${workspaceFolder}/qt-ui/out/**/*.js"],
       "cwd": "${workspaceFolder}/qt-ui",
       "preLaunchTask": "npm qt-ui watch"
+    },
+    {
+      "name": "Run QML Debug Adapter",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/qt-qml"],
+      "outFiles": ["${workspaceFolder}/qt-qml/out/debug/**/*.js"],
+      "cwd": "${workspaceFolder}/qt-qml",
+      "preLaunchTask": "npm QML Debug Adapter watch"
     }
   ]
 }

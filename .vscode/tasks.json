@@ -39,6 +39,23 @@
     },
     {
       "type": "shell",
+      "label": "npm QML Debug Adapter watch",
+      "problemMatcher": "$tsc-watch",
+      "command": "npm run watch",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "never"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/qt-qml"
+      }
+    },
+    {
+      "type": "shell",
       "label": "npm qt-core watch",
       "problemMatcher": "$tsc-watch",
       "command": "npm run watch",
