@@ -83,10 +83,11 @@ export class QmlDebugConnectionManager {
       throw new Error('Server not set');
     }
     if (!this._connection) {
-      return;
+      this.createConnection();
     }
-    this.createConnection();
-    this._connection.connectToHost(this._server.host, this._server.port);
+    if (this._connection) {
+      this._connection.connectToHost(this._server.host, this._server.port);
+    }
   }
   createConnection() {
     this._connection = new QmlDebugConnection();
@@ -111,6 +112,7 @@ export class QmlDebugConnectionManager {
     if (this._connection?.isConnected()) {
       return;
     }
+    logger.info('Connection opened');
     // stopConnectionTimer();
     // emit connectionOpened();
     this._connectionOpened.fire();
@@ -119,6 +121,7 @@ export class QmlDebugConnectionManager {
     if (!this._connection?.isConnected()) {
       return;
     }
+    logger.info('Connection closed');
     // this.destroyConnection(); // TODO: Implement
     this._connectionClosed.fire();
   }
@@ -126,6 +129,7 @@ export class QmlDebugConnectionManager {
     if (this._connection) {
       return;
     }
+    logger.error('Connection failed');
     this._connectionFailed.fire();
   }
 
@@ -237,30 +241,38 @@ export class QmlDebugConnection {
       this.socketDisconnected();
     });
     this._device.on('connect', () => {
-      this.socketConnected();
+      logger.info('Connected to host');
+      void this.socketConnected();
     });
     this._device.on('data', () => {
       if (!this._protocol) {
         throw new Error('Protocol not set');
       }
+      logger.info('Data received');
       this._protocol.readyRead();
     });
     this._device.on('close', () => {
+      logger.info('Socket closed');
       this.socketDisconnected();
     });
     this._device.connect(port, host ? host : 'localhost');
   }
-  socketConnected() {
+  async socketConnected() {
     const packet = new Packet();
     packet.writeStringUTF16(serverId);
     packet.writeInt32BE(0); // OP
     packet.writeInt32BE(1); // Version
-    const plugins = Array.from(this._plugins.keys());
-    for (const plugin of plugins) {
-      packet.writeStringUTF16(plugin);
-    }
+    // const plugins = Array.from(this._plugins.keys());
+    // for (const plugin of plugins) {
+    //   packet.writeStringUTF16(plugin);
+    // }
+    packet.writeStringUTF16('QmlDebugger');
     packet.writeInt32BE(QmlDebugConnection.minStreamVersion);
     packet.writeBoolean(true);
+    if (!this._protocol) {
+      throw new Error('Protocol not set');
+    }
+    await this._protocol.send(packet.data);
   }
   protocolReadyRead() {
     void this;
@@ -328,7 +340,9 @@ export class QmlDebugClient {
   constructor(
     private readonly _name: string,
     private readonly _connection: QmlDebugConnection
-  ) {}
+  ) {
+    void this._connection.addClient(this._name, this);
+  }
   serviceVersion() {
     void this;
     // TODO: Implement

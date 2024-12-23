@@ -1,6 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
+// Replacement of QDataStream
 export class DataStream {
   private _data = Buffer.alloc(0);
   private readOffset = 0;

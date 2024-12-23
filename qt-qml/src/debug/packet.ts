@@ -9,10 +9,16 @@ import { Socket } from 'net';
 type PacketSocket = PromiseSocket<Socket>;
 
 export class Packet extends DataStream {
-  override get data() {
-    return super.data;
-  }
+  // constructor(data?: Buffer) {
+  //   super(data);
+  // }
+  // override get data() {
+  //   return super.data;
+  // }
 }
+
+// export type Packet = DataStream;
+// alias Packet = DataStream;
 
 export class PacketProtocol {
   private readonly socket: PacketSocket;
