@@ -3,7 +3,13 @@
 
 import * as vscode from 'vscode';
 import { createLogger } from 'qt-lib';
+import {
+  QmlDebugConnectionManager,
+  Server,
+  ServerScheme
+} from '@debug/debug-connection';
 import { LoggingDebugSession } from '@vscode/debugadapter';
+import { DebugProtocol } from '@vscode/debugprotocol';
 
 const logger = createLogger('project');
 
@@ -14,12 +20,46 @@ export function registerQmlDebugAdapterFactory() {
   );
 }
 
+interface QmlDebugSessionAttachArguments
+  extends DebugProtocol.AttachRequestArguments {
+  host: string;
+  port: number;
+  paths: Record<string, string>;
+}
+
 export class QmlDebugSession extends LoggingDebugSession {
-  private readonly QmlDebugConnection
+  private _QmlDebugConnectionManager: QmlDebugConnectionManager | undefined;
   public constructor(session: vscode.DebugSession) {
     super();
 
     logger.info('Creating debug session for session:', session.id);
+  }
+  protected override attachRequest(
+    response: DebugProtocol.AttachResponse,
+    args: QmlDebugSessionAttachArguments,
+    request?: DebugProtocol.Request
+  ) {
+    // logger.info('response:', response.toString());
+    void request;
+    logger.info(
+      'Attach request:',
+      args.host,
+      args.port.toString(),
+      JSON.stringify(Object.fromEntries(Object.entries(args.paths)))
+    );
+    const server: Server = {
+      host: args.host,
+      port: args.port,
+      scheme: ServerScheme.Tcp
+    };
+    try {
+      this._QmlDebugConnectionManager = new QmlDebugConnectionManager();
+      this._QmlDebugConnectionManager.connectToServer(server);
+
+      this.sendResponse(response);
+    } catch (error) {
+      logger.error('Error:', (error as Error).message);
+    }
   }
 }
 
