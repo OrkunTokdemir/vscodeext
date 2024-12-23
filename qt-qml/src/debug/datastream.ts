@@ -91,6 +91,7 @@ export class DataStream {
   writeStringUTF8(value: string) {
     const newValueSize = Buffer.byteLength(value, 'utf8');
     this.ensureCapacity(this.writeOffset + newValueSize);
+    this.writeInt32BE(newValueSize);
     this._data.write(value, this.writeOffset, 'utf8');
     this.writeOffset += newValueSize;
   }
@@ -106,8 +107,10 @@ export class DataStream {
   writeStringUTF16(value: string) {
     const newValueSize = Buffer.byteLength(value, 'ucs-2');
     this.ensureCapacity(this.writeOffset + newValueSize);
+    this.writeInt32BE(newValueSize);
     const stringBuffer = Buffer.from(value, 'ucs-2').swap16();
     stringBuffer.copy(this._data, this.writeOffset);
+    this.writeOffset += newValueSize;
     // this._data.write(value, this.writeOffset, 'ucs-2'); // Needs swap16?
     // this.writeOffset += newValueSize;
   }
@@ -174,7 +177,11 @@ export class DataStream {
     this.readOffset += 8;
     return value;
   }
-  readStringUTF8(length: number): string {
+  readStringUTF8(): string {
+    const length = this.readInt32BE();
+    if (length === 0xffffffff) {
+      return '';
+    }
     const value = this._data.toString(
       'utf8',
       this.readOffset,
@@ -183,7 +190,11 @@ export class DataStream {
     this.readOffset += length;
     return value;
   }
-  readStringUTF16LE(length: number): string {
+  readStringUTF16LE(): string {
+    const length = this.readInt32BE();
+    if (length === 0xffffffff) {
+      return '';
+    }
     const bytesLen = length * 2;
     const value = this._data.toString(
       'utf16le',
@@ -193,7 +204,11 @@ export class DataStream {
     this.readOffset += bytesLen;
     return value;
   }
-  readStringUTF16BE(length: number): string {
+  readStringUTF16BE(): string {
+    const length = this.readInt32BE();
+    if (length === 0xffffffff) {
+      return '';
+    }
     const bytesLen = length * 2;
     const value = this._data.toString(
       'ucs-2',
