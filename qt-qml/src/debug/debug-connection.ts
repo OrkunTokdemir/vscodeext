@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-import { Packet, PacketProtocol } from '@debug/packet';
 import { Socket } from 'net';
+
 import { createLogger } from 'qt-lib';
+import { Packet, PacketProtocol } from '@debug/packet';
+import { Timer } from '@debug/timer';
 
 const logger = createLogger('project');
 
@@ -12,6 +14,16 @@ export enum ServerScheme {
   Tcp = 'tcp',
   // eslint-disable-next-line @typescript-eslint/no-shadow
   Socket = 'unix'
+}
+
+export enum SocketState {
+  UnconnectedState = 0,
+  HostLookupState = 1,
+  ConnectingState = 2,
+  ConnectedState = 3,
+  BoundState = 4,
+  ListeningState = 5,
+  ClosingState = 6
 }
 
 export interface Server {
@@ -24,17 +36,21 @@ const serverId = 'QDeclarativeDebugServer';
 // const clientId = "QDeclarativeDebugClient";
 
 export class QmlDebugConnectionManager {
+  private readonly _connectionTimer: Timer = new Timer();
   private _server: Server | undefined;
   private _connection: QmlDebugConnection | undefined;
-  private _retryInterval = 200;
-  private _maximumRetries = 10;
+  private _retryInterval = 400; // 200ms??
+  private _maximumRetries = 50; // 10??
+  private _numRetries = 0;
   private readonly _connectionOpened = new vscode.EventEmitter<void>();
   private readonly _connectionClosed = new vscode.EventEmitter<void>();
   private readonly _connectionFailed = new vscode.EventEmitter<void>();
-  // private readonly _numRetries = 0;
 
-  // constructor(server: Server) {
-  //     this._server = server;
+  // get numRetries() {
+  //   return this._numRetries;
+  // }
+  // set numRetries(value: number) {
+  //   this._numRetries = value;
   // }
   get retryInterval() {
     return this._retryInterval;
@@ -85,8 +101,65 @@ export class QmlDebugConnectionManager {
     if (!this._connection) {
       this.createConnection();
     }
+    const onTimeout = () => {
+      if (this.isConnected()) {
+        return;
+      }
+      if (++this._numRetries < this.maximumRetries) {
+        if (!this._connection) {
+          // If the previous connection failed, recreate it.
+
+          // Assing _connetion explicitly to avoid TS error
+          // TODO: Remove the below line and find a better way to handle this
+          // Because _connection is already assigned in createConnection()
+          this._connection = new QmlDebugConnection();
+          this.createConnection();
+          if (!this._server) {
+            throw new Error('Server not set');
+          }
+          this._connection.connectToHost(this._server.host, this._server.port);
+        } else if (
+          this._numRetries < this._maximumRetries &&
+          this._connection.socketState() !== SocketState.ConnectedState
+        ) {
+          // If we don't get connected in the first retry interval, drop the socket and try
+          // with a new one. On some operating systems (maxOS) the very first connection to a
+          // TCP server takes a very long time to get established and this helps.
+          // On other operating systems (windows) every connection takes forever to get
+          // established. So, after tearing down and rebuilding the socket twice, just
+          // keep trying with the same one.
+          if (!this._server) {
+            throw new Error('Server not set');
+          }
+          this._connection.connectToHost(this._server.host, this._server.port);
+        } // Else leave it alone and wait for hello.
+      } else {
+        // On final timeout, clear the connection.
+        this.stopConnectionTimer();
+        this.destroyConnection();
+        this._connectionFailed.fire();
+      }
+    };
+    this._connectionTimer.onTimeout(() => {
+      onTimeout();
+    });
+    this._connectionTimer.start(this._retryInterval);
+
     if (this._connection) {
       this._connection.connectToHost(this._server.host, this._server.port);
+    }
+  }
+  stopConnectionTimer() {
+    this._connectionTimer.stop();
+  }
+  destroyConnection() {
+    if (this._connection) {
+      this._connection.disconnect();
+      this._connection = undefined;
+      this._connectionTimer.stop();
+      this._connectionTimer.disconnect();
+      // destroyClients(); TODO: Needs this?
+      this._numRetries = 0;
     }
   }
   createConnection() {
@@ -113,7 +186,7 @@ export class QmlDebugConnectionManager {
       return;
     }
     logger.info('Connection opened');
-    // stopConnectionTimer();
+    this.stopConnectionTimer();
     // emit connectionOpened();
     this._connectionOpened.fire();
   }
@@ -169,7 +242,25 @@ export class QmlDebugConnection {
   get onConnectionFailed() {
     return this._connectionFailed.event;
   }
-
+  socketState() {
+    if (!this._device) {
+      return SocketState.UnconnectedState;
+    }
+    if (this._device.readyState === 'open') {
+      return SocketState.ConnectedState;
+    }
+    if (
+      this._device.connecting ||
+      this._device.readyState === 'opening' ||
+      this._device.pending
+    ) {
+      return SocketState.ConnectingState;
+    }
+    if (this._device.destroyed || this._device.closed) {
+      return SocketState.UnconnectedState;
+    }
+    throw new Error('Unknown socket state');
+  }
   socketDisconnected() {
     if (this.gotHello) {
       this._gotHello = false;
@@ -237,7 +328,7 @@ export class QmlDebugConnection {
     //     this, [this](QAbstractSocket::SocketState state) {
     // emit logStateChange(socketStateToString(state));
     this._device.on('error', (error: Error) => {
-      logger.error(`Error connecting to host: ${error.message}`);
+      logger.error('Error connecting to host:' + error.stack);
       this.socketDisconnected();
     });
     this._device.on('connect', () => {
@@ -277,6 +368,9 @@ export class QmlDebugConnection {
   protocolReadyRead() {
     void this;
     // TODO: Implement
+    if (!this._gotHello) {
+      this._connected.fire();
+    }
   }
   // sendMessage(name: string, buffer: Buffer) {
   //     if (!this.gotHello || !this._plugins.has(name)) {
