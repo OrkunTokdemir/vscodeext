@@ -172,6 +172,20 @@ export class DataStream {
     this.readOffset += 8;
     return value;
   }
+  readArray<ValueType>(readFunc: () => ValueType): ValueType[] {
+    const length = this.readInt32BE();
+    const values = new Array<ValueType>();
+    for (let i = 0; i < length; i++) {
+      values.push(readFunc.call(this));
+    }
+    return values;
+  }
+  readArrayString(): string[] {
+    return this.readArray(() => this.readStringUTF16LE());
+  }
+  readArrayDouble(): number[] {
+    return this.readArray(() => this.readDoubleLE());
+  }
   readDoubleBE(): number {
     const value = this._data.readDoubleBE(this.readOffset);
     this.readOffset += 8;

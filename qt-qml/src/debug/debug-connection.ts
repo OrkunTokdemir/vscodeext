@@ -33,7 +33,8 @@ export interface Server {
 }
 
 const serverId = 'QDeclarativeDebugServer';
-// const clientId = "QDeclarativeDebugClient";
+const clientId = 'QDeclarativeDebugClient';
+const protocolVersion = 1;
 
 export class QmlDebugConnectionManager {
   private readonly _connectionTimer: Timer = new Timer();
@@ -335,13 +336,6 @@ export class QmlDebugConnection {
       logger.info('Connected to host');
       void this.socketConnected();
     });
-    this._device.on('data', () => {
-      if (!this._protocol) {
-        throw new Error('Protocol not set');
-      }
-      logger.info('Data received');
-      this._protocol.readyRead();
-    });
     this._device.on('close', () => {
       logger.info('Socket closed');
       this.socketDisconnected();
@@ -366,9 +360,27 @@ export class QmlDebugConnection {
     await this._protocol.send(packet.data);
   }
   protocolReadyRead() {
-    void this;
+    if (!this._protocol) {
+      throw new Error('Protocol not set');
+    }
     // TODO: Implement
     if (!this._gotHello) {
+      const pack = this._protocol.read();
+      const name = pack.readStringUTF16LE();
+      const validHello = false;
+      void validHello;
+      if (name === clientId) {
+        const op = pack.readInt32BE();
+        if (op == 0) {
+          const version = pack.readInt32BE();
+          if (version == protocolVersion) {
+            const pluginNames = new Array<string>();
+            void pluginNames;
+            const pluginVersions = new Array<number>();
+            void pluginVersions;
+          }
+        }
+      }
       this._connected.fire();
     }
   }

@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-import { DataStream } from '@debug/datastream';
 import { PromiseSocket } from 'promise-socket';
 import { Socket } from 'net';
+import { isEmpty } from 'lodash';
+
+import { DataStream } from '@debug/datastream';
+import { createLogger } from 'qt-lib';
 
 type PacketSocket = PromiseSocket<Socket>;
 
+const logger = createLogger('PacketProtocol');
 export class Packet extends DataStream {
   // constructor(data?: Buffer) {
   //   super(data);
@@ -21,11 +25,97 @@ export class Packet extends DataStream {
 // alias Packet = DataStream;
 
 export class PacketProtocol {
-  private readonly socket: PacketSocket;
+  private readonly _dev: PacketSocket;
   private readonly _readyRead = new vscode.EventEmitter<void>();
   private readonly _protocolError = new vscode.EventEmitter<void>();
+  private readonly _packets = new Array<Packet>();
+  private _sendingPackets = new Array<number>();
+  private readonly _bytesWritten = new vscode.EventEmitter<number>();
+  private static readonly notInProgress = -1;
+  private _inProgressSize = PacketProtocol.notInProgress;
+  private _inProgress = Buffer.alloc(0);
   constructor(socket: Socket) {
-    this.socket = new PromiseSocket(socket);
+    socket.on('readable', () => {
+      this.readyToRead();
+    });
+    socket.readable;
+    socket.on('close', () => {
+      this.aboutToClose();
+    });
+    this.onBytesWritten((bytes) => {
+      this.bytesWritten(bytes);
+    });
+    this._dev = new PromiseSocket(socket);
+  }
+  packetsAvailable() {
+    return this._packets.length;
+  }
+  aboutToClose() {
+    this._inProgress = Buffer.alloc(0);
+    this._sendingPackets = [];
+    this._inProgressSize = PacketProtocol.notInProgress;
+  }
+  readyToRead() {
+    const dev = this._dev.socket;
+    const int32SIZE = 4;
+    // Maybe while (true)??
+    while (this._dev.socket.readable) {
+      // Need to get trailing data
+      if (PacketProtocol.notInProgress == this._inProgressSize) {
+        // We need a size header of sizeof(qint32)
+        if (int32SIZE > dev.bytesRead) {
+          return;
+        }
+        // Read size header
+        const inProgressSizeLE: Buffer | null = dev.read(
+          int32SIZE
+        ) as Buffer | null;
+        if (inProgressSizeLE === null) {
+          this.fail();
+          logger.error('Failed to read size header');
+          return;
+        }
+        this._inProgressSize = inProgressSizeLE.readInt32LE();
+        // Check sizing constraints
+        if (this._inProgressSize < int32SIZE) {
+          logger.error('Packet size is too small');
+          return;
+        }
+        this._inProgressSize -= int32SIZE;
+      } else {
+        const temp = dev.read(
+          this._inProgressSize - this._inProgress.length
+        ) as Buffer | null;
+        if (temp === null) {
+          logger.error('Failed to read packet');
+          // this.fail();
+          return;
+        }
+        this._inProgress = Buffer.concat([this._inProgress, temp]);
+        if (this._inProgressSize === this._inProgress.length) {
+          // Packet has arrived!
+          this._packets.push(new Packet(this._inProgress));
+          this._inProgressSize = PacketProtocol.notInProgress;
+          this._inProgress = Buffer.alloc(0);
+
+          this.readyRead();
+        } else {
+          return;
+        }
+      }
+    }
+  }
+  read() {
+    const first = this._packets.shift();
+    if (first) {
+      return first;
+    }
+    return new Packet();
+  }
+  fail() {
+    this._dev.socket.removeAllListeners();
+    this._bytesWritten.dispose();
+    this._protocolError.fire();
   }
   disconnect() {
     this._readyRead.dispose();
@@ -43,21 +133,45 @@ export class PacketProtocol {
     if (buffer.length > maxSendSize) {
       throw new Error('Packet is too large');
     }
-    if (this.socket.socket.destroyed) {
+    if (this._dev.socket.destroyed) {
       return;
     }
     if (buffer.length === 0) {
       return; // We don't send empty packets
     }
     const sendSize = buffer.length + 4;
+    this._sendingPackets.push(sendSize);
     const sendSizeLE = to32LE(sendSize);
     await this.waitUntilWritten(sendSizeLE);
     await this.waitUntilWritten(buffer);
+    this._bytesWritten.fire(sendSize);
   }
+  get onBytesWritten() {
+    return this._bytesWritten.event;
+  }
+
+  bytesWritten(bytes: number) {
+    if (isEmpty(this._sendingPackets)) {
+      throw new Error('Sending packets is empty');
+    }
+    while (bytes) {
+      if (!this._sendingPackets[0]) {
+        return;
+      }
+      if (this._sendingPackets[0] > bytes) {
+        this._sendingPackets[0] -= bytes;
+        bytes = 0;
+      } else {
+        bytes -= this._sendingPackets[0];
+        this._sendingPackets.shift();
+      }
+    }
+  }
+
   private async waitUntilWritten(buffer: Buffer) {
     let written = 0;
     while (written < buffer.length) {
-      written = await this.socket.write(buffer);
+      written = await this._dev.write(buffer);
       buffer = buffer.subarray(written);
     }
   }
