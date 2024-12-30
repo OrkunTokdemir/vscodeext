@@ -53,6 +53,9 @@ export class QmlDebugConnectionManager {
   // set numRetries(value: number) {
   //   this._numRetries = value;
   // }
+  get connection() {
+    return this._connection;
+  }
   get retryInterval() {
     return this._retryInterval;
   }
@@ -216,9 +219,12 @@ export class QmlDebugConnectionManager {
 }
 
 export class QmlDebugConnection {
+  private readonly _serverPlugins = new Map<string, number>();
   private _device: Socket | undefined;
   private _protocol: PacketProtocol | undefined;
   private static readonly minStreamVersion = 12;
+  private _currentDataStreamVersion = QmlDebugConnection.minStreamVersion;
+  private readonly _maximumDataStreamVersion = 23; // Qt_DefaultCompiledVersion??
   // private static readonly maxStreamVersion = 23;
   private readonly _connected = new vscode.EventEmitter<void>();
   private readonly _disconnected = new vscode.EventEmitter<void>();
@@ -367,21 +373,136 @@ export class QmlDebugConnection {
     if (!this._gotHello) {
       const pack = this._protocol.read();
       const name = pack.readStringUTF16LE();
-      const validHello = false;
-      void validHello;
+      let validHello = false;
       if (name === clientId) {
         const op = pack.readInt32BE();
         if (op == 0) {
           const version = pack.readInt32BE();
           if (version == protocolVersion) {
-            const pluginNames = new Array<string>();
-            void pluginNames;
-            const pluginVersions = new Array<number>();
-            void pluginVersions;
+            const pluginNames = pack.readArrayString();
+            const pluginNamesSize = pluginNames.length;
+            const pluginVersions = pack.readArrayDouble();
+            const pluginVersionsSize = pluginVersions.length;
+            for (let i = 0; i < pluginNamesSize; i++) {
+              let pluginVersion = 1.0;
+              //   if (i < pluginVersionsSize)
+              //     pluginVersion = pluginVersions.at(i);
+              // d->serverPlugins.insert(pluginNames.at(i), pluginVersion);
+              if (i < pluginVersionsSize) {
+                const temp = pluginVersions[i];
+                if (!temp) {
+                  throw new Error('Plugin version is not a number');
+                }
+                pluginVersion = temp;
+              }
+              const tempPluginName = pluginNames[i];
+              if (!tempPluginName) {
+                throw new Error('Plugin name is not a string');
+              }
+              this._serverPlugins.set(tempPluginName, pluginVersion);
+            }
+            //   if (!pack.atEnd()) {
+            //     pack >> d->currentDataStreamVersion;
+            //     if (d->currentDataStreamVersion > d->maximumDataStreamVersion)
+            //         qWarning() << "Server returned invalid data stream version!";
+            // }
+            // validHello = true;
+            if (!pack.atEnd()) {
+              // d->currentDataStreamVersion = pack.readInt32BE();
+              this._currentDataStreamVersion = pack.readInt32BE();
+              // if (d->currentDataStreamVersion > d->maximumDataStreamVersion) {
+              //     console.warn('Server returned invalid data stream version!');
+              // }
+              if (
+                this._currentDataStreamVersion > this._maximumDataStreamVersion
+              ) {
+                logger.warn('Server returned invalid data stream version!');
+              }
+              validHello = true;
+            }
           }
         }
       }
+
+      if (!validHello) {
+        logger.warn('QML Debug Client: Invalid hello message');
+        this.close();
+        return;
+      }
+      this._gotHello = true;
+      for (const [key, value] of this._plugins) {
+        let newState = QmlDebugConnectionState.Unavailable;
+        if (this._serverPlugins.has(key)) {
+          newState = QmlDebugConnectionState.Enabled;
+        }
+        value.stateChanged(newState);
+      }
       this._connected.fire();
+    }
+    while (this._protocol.packetsAvailable()) {
+      const pack = this._protocol.read();
+      const name = pack.readStringUTF16LE();
+
+      if (name === clientId) {
+        const op = pack.readInt32BE();
+        if (op === 1) {
+          // Service Discovery
+          const oldServerPlugins = new Map(this._serverPlugins);
+          this._serverPlugins.clear();
+
+          const pluginNames = pack.readArrayString();
+          let pluginVersions: number[] | undefined;
+          if (!pack.atEnd()) {
+            pluginVersions = pack.readArrayDouble();
+          }
+          // const int pluginNamesSize = pluginNames.size();
+          // const int pluginVersionsSize = pluginVersions.size();
+          const pluginNamesSize = pluginNames.length;
+          const pluginVersionsSize = pluginVersions ? pluginVersions.length : 0;
+          for (let i = 0; i < pluginNamesSize; i++) {
+            let pluginVersion = 1.0;
+            if (pluginVersions && i < pluginVersionsSize) {
+              const temp = pluginVersions[i];
+              if (!temp) {
+                throw new Error('Plugin version is not a number');
+              }
+              pluginVersion = temp;
+            }
+            const tempPluginName = pluginNames[i];
+            if (!tempPluginName) {
+              throw new Error('Plugin name is not a string');
+            }
+            this._serverPlugins.set(tempPluginName, pluginVersion);
+          }
+          for (const [pluginName, plugin] of this._plugins) {
+            let newState = QmlDebugConnectionState.Unavailable;
+            if (this._serverPlugins.has(pluginName)) {
+              newState = QmlDebugConnectionState.Enabled;
+            }
+
+            if (
+              oldServerPlugins.has(pluginName) !=
+              this._serverPlugins.has(pluginName)
+            ) {
+              plugin.stateChanged(newState);
+            }
+          }
+        } else {
+          logger.warn('QML Debug Client: Unknown control message id' + op);
+        }
+      } else {
+        const client = this._plugins.get(name);
+        if (!client) {
+          logger.warn(
+            'QML Debug Client: Message received for missing plugin' + name
+          );
+        } else {
+          while (!pack.atEnd()) {
+            const subPacket = pack.readSubDataStream();
+            client.messageReceived(subPacket);
+          }
+        }
+      }
     }
   }
   // sendMessage(name: string, buffer: Buffer) {
@@ -439,7 +560,7 @@ enum QmlDebugConnectionState {
 }
 
 export interface IQmlDebugClient {
-  messageReceived(buffer: Buffer): void;
+  messageReceived(packet: Packet): void;
   stateChanged(state: QmlDebugConnectionState): void;
 }
 export class QmlDebugClient {
@@ -458,6 +579,11 @@ export class QmlDebugClient {
   }
   get connection() {
     return this._connection;
+  }
+  messageReceived(packet: Packet): void {
+    void this;
+    void packet;
+    throw new Error('Method not implemented.');
   }
   stateChanged(state: QmlDebugConnectionState) {
     void state;
@@ -491,13 +617,46 @@ export class QmlEngineDebugClient
   override stateChanged(state: QmlDebugConnectionState) {
     this.newState.fire(state);
   }
-  messageReceived(buffer: Buffer): void {
+  override messageReceived(packet: Packet): void {
     void this;
-    void buffer;
+    void packet;
     // TODO: Implement
   }
 }
 
+export class DebugMessageClient
+  extends QmlDebugClient
+  implements IQmlDebugClient
+{
+  constructor(connection: QmlDebugConnection) {
+    super('DebugMessages', connection);
+  }
+  override messageReceived(packet: Packet): void {
+    const messageHeader = packet.readStringUTF8();
+    if (messageHeader !== 'MESSAGE') {
+      return;
+    }
+    const type = packet.readInt32BE();
+    const message = packet.readStringUTF8();
+    const filename = packet.readStringUTF8();
+    const line = packet.readInt32BE();
+    const functionName = packet.readStringUTF8();
+    const category = packet.readStringUTF8();
+    const elapsedSeconds = Number(packet.readInt64BE() / BigInt(1000000000));
+    void this,
+      type,
+      message,
+      filename,
+      line,
+      functionName,
+      category,
+      elapsedSeconds;
+  }
+  override stateChanged(state: QmlDebugConnectionState): void {
+    void state;
+    void this;
+  }
+}
 export class QmlInspectorAgent {
   // private readonly QmlEngineDebugClient: QmlEngineDebugClient | undefined;
   private readonly _connection: QmlDebugConnection | undefined;

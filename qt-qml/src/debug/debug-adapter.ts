@@ -4,6 +4,7 @@
 import * as vscode from 'vscode';
 import { createLogger } from 'qt-lib';
 import {
+  DebugMessageClient,
   QmlDebugConnectionManager,
   Server,
   ServerScheme
@@ -28,6 +29,7 @@ interface QmlDebugSessionAttachArguments
 }
 
 export class QmlDebugSession extends LoggingDebugSession {
+  private _debugMessageClient: DebugMessageClient | undefined;
   private _QmlDebugConnectionManager: QmlDebugConnectionManager | undefined;
   public constructor(session: vscode.DebugSession) {
     super();
@@ -55,6 +57,13 @@ export class QmlDebugSession extends LoggingDebugSession {
     try {
       this._QmlDebugConnectionManager = new QmlDebugConnectionManager();
       this._QmlDebugConnectionManager.connectToServer(server);
+
+      const connection = this._QmlDebugConnectionManager.connection;
+      if (!connection) {
+        throw new Error('Connection is not established');
+      }
+      this._debugMessageClient = new DebugMessageClient(connection);
+      void this._debugMessageClient;
 
       this.sendResponse(response);
     } catch (error) {

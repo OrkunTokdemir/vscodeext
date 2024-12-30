@@ -142,6 +142,9 @@ export class DataStream {
     this.readOffset += 4;
     return value;
   }
+  atEnd(): boolean {
+    return this.readOffset >= this._data.byteLength;
+  }
   readInt32BE(): number {
     const value = this._data.readInt32BE(this.readOffset);
     this.readOffset += 4;
@@ -231,6 +234,14 @@ export class DataStream {
     );
     this.readOffset += length;
     return value;
+  }
+  readSubDataStream(): DataStream {
+    const size = this.readInt32BE();
+    const subPacket = new DataStream(
+      this._data.subarray(this.readOffset, size)
+    );
+    this.readOffset += size;
+    return subPacket;
   }
   resize(newSize: number) {
     const newData = Buffer.alloc(newSize);

@@ -47,8 +47,8 @@ export class PacketProtocol {
     });
     this._dev = new PromiseSocket(socket);
   }
-  packetsAvailable() {
-    return this._packets.length;
+  packetsAvailable(): boolean {
+    return this._packets.length > 0;
   }
   aboutToClose() {
     this._inProgress = Buffer.alloc(0);
