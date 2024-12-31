@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 export class Timer {
   private readonly _onTimeout: vscode.EventEmitter<void> =
     new vscode.EventEmitter<void>();
+  private _singleShot = false;
   private _interval: number | undefined; // ms
   private _timer: NodeJS.Timeout | undefined;
   constructor(interval?: number) {
@@ -27,12 +28,29 @@ export class Timer {
   }
 
   start(interval?: number) {
-    if (interval) {
+    if (interval !== undefined) {
       this._interval = interval;
+    }
+    if (this._timer) {
+      this.stop();
+    }
+    if (this._interval === undefined) {
+      return;
     }
     this._timer = setInterval(() => {
       this._onTimeout.fire();
+      if (this._singleShot) {
+        this.stop();
+      }
     }, this._interval);
+  }
+
+  setInterval(interval: number) {
+    this._interval = interval;
+  }
+
+  setSingleShot(singleShot: boolean) {
+    this._singleShot = singleShot;
   }
 
   stop() {
