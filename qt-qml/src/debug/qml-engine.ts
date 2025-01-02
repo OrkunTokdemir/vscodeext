@@ -80,6 +80,15 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //       this, &QmlEngine::connectionEstablished);
     // connect(connection, &QmlDebugConnection::disconnected,
     //       this, &QmlEngine::disconnected);
+    // d->connectionTimer.setInterval(4000);
+    // d->connectionTimer.setSingleShot(true);
+    // connect(&d->connectionTimer, &QTimer::timeout,
+    //         this, &QmlEngine::checkConnectionState);
+    this._connectionTimer.setInterval(4000);
+    this._connectionTimer.setSingleShot(true);
+    this._connectionTimer.onTimeout(() => {
+      this.checkConnectionState();
+    });
     this.connection.onConnectionFailed(() => {
       this.connectionFailed();
     });
@@ -90,6 +99,23 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this.connection.onDisconnected(() => {
       this.disconnected();
     });
+  }
+  checkConnectionState() {
+    if (!this.isConnected()) {
+      this.closeConnection();
+      this.connectionStartupFailed();
+    }
+  }
+  closeConnection() {
+    // d->automaticConnect = false;
+    // d->retryOnConnectFail = false;
+    // d->connectionTimer.stop();
+    // if (QmlDebugConnection *connection = d->connection())
+    //     connection->close();
+    this._automaticConnect = false;
+    this._retryOnConnectFail = false;
+    this._connectionTimer.stop();
+    this.connection.close();
   }
   connectionEstablished() {
     if (this.state == DebuggerState.EngineRunRequested) {

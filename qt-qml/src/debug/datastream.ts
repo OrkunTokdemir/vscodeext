@@ -212,13 +212,12 @@ export class DataStream {
     if (length === 0xffffffff) {
       return '';
     }
-    const bytesLen = length * 2;
-    const value = this._data.toString(
-      'utf16le',
+    const valueBuffer = this._data.subarray(
       this.readOffset,
-      this.readOffset + bytesLen
+      this.readOffset + length
     );
-    this.readOffset += bytesLen;
+    const value = valueBuffer.swap16().toString('ucs-2');
+    this.readOffset += length;
     return value;
   }
   readStringUTF16BE(): string {

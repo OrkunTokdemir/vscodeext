@@ -583,12 +583,12 @@ export class QmlDebugClient {
   messageReceived(packet: Packet): void {
     void this;
     void packet;
-    throw new Error('Method not implemented.');
+    // throw new Error('Method not implemented.');
   }
   stateChanged(state: QmlDebugConnectionState) {
     void state;
     void this;
-    throw new Error('Method not implemented.');
+    // throw new Error('Method not implemented.');
   }
   // getState() : QmlDebugConnectionState {
   //     // TODO: Implement
