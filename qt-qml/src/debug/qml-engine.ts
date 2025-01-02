@@ -66,8 +66,8 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   // private readonly _breakpointsTemp = new Array<string>();
   private _state: DebuggerState = DebuggerState.DebuggerNotReady;
   // private _dbEngine: DebuggerEngine = new DebuggerEngine();
-  private _retryOnConnectFail = true;
-  private _automaticConnect = true;
+  private _retryOnConnectFail = false;
+  private _automaticConnect = false;
   private readonly _connectionTimer: Timer = new Timer();
   constructor() {
     super('V8Debugger', new QmlDebugConnection());
@@ -170,7 +170,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //   d->retryOnConnectFail = true;
     //   d->automaticConnect = true;
     // }
-    if (this.state !== DebuggerState.EngineSetupRequested) {
+    if (this.state !== DebuggerState.EngineRunRequested) {
       throw new Error('Unexpected state:' + this.state);
     }
     if (this._startMode === DebuggerStartMode.AttachToQmlServer) {
@@ -180,11 +180,18 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       this.beginConnection();
     }
   }
+  start() {
+    // d->m_watchHandler.resetWatchers();
+    // d->setInitialActionStates();
+    this.setState(DebuggerState.EngineSetupRequested);
+    logger.info('CALL: SETUP ENGINE');
+    this.setupEngine();
+  }
   tryToConnect() {
     logger.info('QML Debugger: Trying to connect ...');
     this._retryOnConnectFail = true;
 
-    if (this.state === DebuggerState.EngineSetupRequested) {
+    if (this.state === DebuggerState.EngineRunRequested) {
       if (this._isDying) {
         // Probably cpp is being debugged and hence we did not get the output yet.
         this.appStartupFailed('No application output received in time');
@@ -197,7 +204,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   }
   beginConnection() {
     if (
-      this.state != DebuggerState.EngineRunRequested &&
+      this.state !== DebuggerState.EngineRunRequested &&
       this._retryOnConnectFail
     ) {
       return;
@@ -278,6 +285,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     if (this.state !== DebuggerState.EngineSetupRequested) {
       throw new Error('Unexpected state:' + this.state);
     }
+    this.setState(DebuggerState.EngineRunRequested);
   }
 
   get state() {

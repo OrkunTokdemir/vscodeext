@@ -68,7 +68,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       // void this._debugMessageClient;
       this._qmlEngine = new QmlEngine();
       this._qmlEngine.server = server;
-      this._qmlEngine.setupEngine();
+      this._qmlEngine.start();
 
       this.sendResponse(response);
     } catch (error) {
