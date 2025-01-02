@@ -4,13 +4,14 @@
 import * as vscode from 'vscode';
 import { createLogger } from 'qt-lib';
 import {
-  DebugMessageClient,
-  QmlDebugConnectionManager,
+  // DebugMessageClient,
+  // QmlDebugConnectionManager,
   Server,
   ServerScheme
 } from '@debug/debug-connection';
 import { LoggingDebugSession } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
+import { QmlEngine } from '@debug/qml-engine';
 
 const logger = createLogger('project');
 
@@ -29,8 +30,9 @@ interface QmlDebugSessionAttachArguments
 }
 
 export class QmlDebugSession extends LoggingDebugSession {
-  private _debugMessageClient: DebugMessageClient | undefined;
-  private _QmlDebugConnectionManager: QmlDebugConnectionManager | undefined;
+  // private _debugMessageClient: DebugMessageClient | undefined;
+  // private _QmlDebugConnectionManager: QmlDebugConnectionManager | undefined;
+  private _qmlEngine: QmlEngine | undefined;
   public constructor(session: vscode.DebugSession) {
     super();
 
@@ -55,15 +57,18 @@ export class QmlDebugSession extends LoggingDebugSession {
       scheme: ServerScheme.Tcp
     };
     try {
-      this._QmlDebugConnectionManager = new QmlDebugConnectionManager();
-      this._QmlDebugConnectionManager.connectToServer(server);
+      // this._QmlDebugConnectionManager = new QmlDebugConnectionManager();
+      // this._QmlDebugConnectionManager.connectToServer(server);
 
-      const connection = this._QmlDebugConnectionManager.connection;
-      if (!connection) {
-        throw new Error('Connection is not established');
-      }
-      this._debugMessageClient = new DebugMessageClient(connection);
-      void this._debugMessageClient;
+      // const connection = this._QmlDebugConnectionManager.connection;
+      // if (!connection) {
+      //   throw new Error('Connection is not established');
+      // }
+      // this._debugMessageClient = new DebugMessageClient(connection);
+      // void this._debugMessageClient;
+      this._qmlEngine = new QmlEngine();
+      this._qmlEngine.server = server;
+      this._qmlEngine.setupEngine();
 
       this.sendResponse(response);
     } catch (error) {

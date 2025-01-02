@@ -57,4 +57,7 @@ export class Timer {
     clearInterval(this._timer);
     this._timer = undefined;
   }
+  public static singleShot(interval: number, callback: () => void) {
+    setTimeout(callback, interval);
+  }
 }
