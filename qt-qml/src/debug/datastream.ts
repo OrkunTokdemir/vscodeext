@@ -46,10 +46,22 @@ export class DataStream {
     this._data.writeInt32LE(value, this.writeOffset);
     this.writeOffset += newValueSize;
   }
+  writeUInt32LE(value: number) {
+    const newValueSize = 4;
+    this.ensureCapacity(this.writeOffset + newValueSize);
+    this._data.writeUInt32LE(value, this.writeOffset);
+    this.writeOffset += newValueSize;
+  }
   writeInt32BE(value: number) {
     const newValueSize = 4;
     this.ensureCapacity(this.writeOffset + newValueSize);
     this._data.writeInt32BE(value, this.writeOffset);
+    this.writeOffset += newValueSize;
+  }
+  writeUInt32BE(value: number) {
+    const newValueSize = 4;
+    this.ensureCapacity(this.writeOffset + newValueSize);
+    this._data.writeUInt32BE(value, this.writeOffset);
     this.writeOffset += newValueSize;
   }
   writeInt64LE(value: bigint) {
@@ -90,8 +102,8 @@ export class DataStream {
   }
   writeStringUTF8(value: string) {
     const newValueSize = Buffer.byteLength(value, 'utf8');
-    this.ensureCapacity(this.writeOffset + newValueSize);
-    this.writeInt32BE(newValueSize);
+    this.ensureCapacity(this.writeOffset + newValueSize + 4);
+    this.writeUInt32BE(newValueSize);
     this._data.write(value, this.writeOffset, 'utf8');
     this.writeOffset += newValueSize;
   }
@@ -106,20 +118,19 @@ export class DataStream {
   // }
   writeStringUTF16(value: string) {
     const newValueSize = Buffer.byteLength(value, 'ucs-2');
-    this.ensureCapacity(this.writeOffset + newValueSize);
-    this.writeInt32BE(newValueSize);
+    this.ensureCapacity(this.writeOffset + newValueSize + 4);
+    this.writeUInt32BE(newValueSize);
     const stringBuffer = Buffer.from(value, 'ucs-2').swap16();
     stringBuffer.copy(this._data, this.writeOffset);
     this.writeOffset += newValueSize;
     // this._data.write(value, this.writeOffset, 'ucs-2'); // Needs swap16?
     // this.writeOffset += newValueSize;
   }
-  writeContainer<T>(
-    container: T,
-    writeFunc: (stream: DataStream, value: unknown) => void
-  ) {
-    for (const key in container) {
-      writeFunc(this, container[key]);
+  // public appendArray<ValueType>(appendFunction : (value : ValueType) => void, value : ValueType[]) : void
+  writeArray<T>(container: T[], writeFunc: (value: T) => void) {
+    this.writeUInt32BE(container.length);
+    for (const key of container) {
+      writeFunc.call(this, key);
     }
   }
   readInt8(): number {
@@ -150,6 +161,16 @@ export class DataStream {
     this.readOffset += 4;
     return value;
   }
+  readUInt32LE(): number {
+    const value = this._data.readUInt32LE(this.readOffset);
+    this.readOffset += 4;
+    return value;
+  }
+  readUInt32BE(): number {
+    const value = this._data.readUInt32BE(this.readOffset);
+    this.readOffset += 4;
+    return value;
+  }
   readInt64LE(): bigint {
     const value = this._data.readBigInt64LE(this.readOffset);
     this.readOffset += 8;
@@ -176,7 +197,7 @@ export class DataStream {
     return value;
   }
   readArray<ValueType>(readFunc: () => ValueType): ValueType[] {
-    const length = this.readInt32BE();
+    const length = this.readUInt32BE();
     const values = new Array<ValueType>();
     for (let i = 0; i < length; i++) {
       values.push(readFunc.call(this));
@@ -195,7 +216,7 @@ export class DataStream {
     return value;
   }
   readStringUTF8(): string {
-    const length = this.readInt32BE();
+    const length = this.readUInt32BE();
     if (length === 0xffffffff) {
       return '';
     }
@@ -208,7 +229,7 @@ export class DataStream {
     return value;
   }
   readStringUTF16LE(): string {
-    const length = this.readInt32BE();
+    const length = this.readUInt32BE();
     if (length === 0xffffffff) {
       return '';
     }
@@ -221,7 +242,7 @@ export class DataStream {
     return value;
   }
   readStringUTF16BE(): string {
-    const length = this.readInt32BE();
+    const length = this.readUInt32BE();
     if (length === 0xffffffff) {
       return '';
     }
@@ -235,7 +256,7 @@ export class DataStream {
     return value;
   }
   readSubDataStream(): DataStream {
-    const size = this.readInt32BE();
+    const size = this.readUInt32BE();
     const subPacket = new DataStream(
       this._data.subarray(this.readOffset, size)
     );

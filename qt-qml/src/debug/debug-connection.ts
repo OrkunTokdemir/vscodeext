@@ -353,11 +353,10 @@ export class QmlDebugConnection {
     packet.writeStringUTF16(serverId);
     packet.writeInt32BE(0); // OP
     packet.writeInt32BE(1); // Version
-    // const plugins = Array.from(this._plugins.keys());
-    // for (const plugin of plugins) {
-    //   packet.writeStringUTF16(plugin);
-    // }
-    packet.writeStringUTF16('QmlDebugger');
+    const plugins = Array.from(this._plugins.keys());
+    packet.writeArray(plugins, (plugin) => {
+      packet.writeStringUTF16(plugin);
+    });
     packet.writeInt32BE(QmlDebugConnection.minStreamVersion);
     packet.writeBoolean(true);
     if (!this._protocol) {
@@ -569,6 +568,10 @@ export class QmlDebugClient {
     private readonly _connection: QmlDebugConnection
   ) {
     void this._connection.addClient(this._name, this);
+    // TODO: Delete the below lines
+    void this._connection.addClient('QmlDebugger', this);
+    void this._connection.addClient('DebugMessages', this);
+    void this._connection.addClient('QmlInspector', this);
   }
   serviceVersion() {
     void this;
