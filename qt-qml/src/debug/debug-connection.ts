@@ -249,6 +249,13 @@ export class QmlDebugConnection {
   get onConnectionFailed() {
     return this._connectionFailed.event;
   }
+  serviceVersion(serviceName: string) {
+    const version = this._serverPlugins.get(serviceName);
+    if (version) {
+      return version;
+    }
+    return -1;
+  }
   socketState() {
     if (!this._device) {
       return SocketState.UnconnectedState;
@@ -552,7 +559,7 @@ export class QmlDebugConnection {
   }
 }
 
-enum QmlDebugConnectionState {
+export enum QmlDebugConnectionState {
   NotConnected,
   Unavailable,
   Enabled
@@ -569,13 +576,12 @@ export class QmlDebugClient {
   ) {
     void this._connection.addClient(this._name, this);
     // TODO: Delete the below lines
-    void this._connection.addClient('QmlDebugger', this);
-    void this._connection.addClient('DebugMessages', this);
-    void this._connection.addClient('QmlInspector', this);
+    // void this._connection.addClient('QmlDebugger', this);
+    // void this._connection.addClient('DebugMessages', this);
+    // void this._connection.addClient('QmlInspector', this);
   }
   serviceVersion() {
-    void this;
-    // TODO: Implement
+    return this._connection.serviceVersion(this.name);
   }
   get name() {
     return this._name;
@@ -627,33 +633,65 @@ export class QmlEngineDebugClient
   }
 }
 
+interface DebugContextInfo {
+  line: number;
+  file: string;
+  function: string;
+  category?: string;
+  timestamp: bigint;
+}
+
+export interface IMessageType {
+  type: number;
+  message: string;
+  info: DebugContextInfo;
+}
+
 export class DebugMessageClient
   extends QmlDebugClient
   implements IQmlDebugClient
 {
+  // signals:
+  private readonly _newState =
+    new vscode.EventEmitter<QmlDebugConnectionState>();
+  private readonly _message = new vscode.EventEmitter<IMessageType>();
+
   constructor(connection: QmlDebugConnection) {
     super('DebugMessages', connection);
   }
-  override messageReceived(packet: Packet): void {
-    const messageHeader = packet.readStringUTF8();
-    if (messageHeader !== 'MESSAGE') {
+  get newState() {
+    return this._newState.event;
+  }
+  get message() {
+    return this._message.event;
+  }
+  override messageReceived(ds: Packet): void {
+    const command = ds.readStringUTF8();
+    if (command !== 'MESSAGE') {
       return;
     }
-    const type = packet.readInt32BE();
-    const message = packet.readStringUTF8();
-    const filename = packet.readStringUTF8();
-    const line = packet.readInt32BE();
-    const functionName = packet.readStringUTF8();
-    const category = packet.readStringUTF8();
-    const elapsedSeconds = Number(packet.readInt64BE() / BigInt(1000000000));
-    void this,
-      type,
-      message,
-      filename,
-      line,
-      functionName,
-      category,
-      elapsedSeconds;
+    const type = ds.readInt32BE();
+    const debugMessage = ds.readStringUTF8();
+    const file = ds.readStringUTF8();
+    const line = ds.readInt32BE();
+    const functionName = ds.readStringUTF8();
+    const info: DebugContextInfo = {
+      line: line,
+      file: file,
+      function: functionName,
+      timestamp: BigInt(-1)
+    };
+    if (!ds.atEnd()) {
+      info.category = ds.readStringUTF8();
+      if (!ds.atEnd()) {
+        info.timestamp = ds.readInt64BE();
+      }
+    }
+    this._message.fire({
+      type: type,
+      message: debugMessage,
+      info: info
+    });
   }
   override stateChanged(state: QmlDebugConnectionState): void {
     void state;

@@ -7,7 +7,10 @@ import {
   QmlDebugClient,
   IQmlDebugClient,
   QmlDebugConnection,
-  Server
+  Server,
+  DebugMessageClient,
+  IMessageType,
+  QmlDebugConnectionState
 } from '@debug/debug-connection';
 import { Timer } from '@debug/timer';
 // import { DebuggerEngine } from '@debug/debugger-engine';
@@ -56,8 +59,17 @@ export enum DebuggerStartMode {
   StartRemoteProcess // Start and attach to a remote process
 }
 
+enum QtMsgType {
+  QtDebugMsg,
+  QtInfoMsg,
+  QtWarningMsg,
+  QtCriticalMsg,
+  QtFatalMsg
+}
+
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
+  private readonly _msgClient: DebugMessageClient | undefined;
   private readonly _startMode: DebuggerStartMode =
     DebuggerStartMode.AttachToQmlServer;
   private _server: Server | undefined;
@@ -99,6 +111,69 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this.connection.onDisconnected(() => {
       this.disconnected();
     });
+    this._msgClient = new DebugMessageClient(this.connection);
+    this._msgClient.newState((state: QmlDebugConnectionState) => {
+      if (!this._msgClient) {
+        throw new Error('Message client is not set');
+      }
+      this.logServiceStateChange(
+        this._msgClient.name,
+        this._msgClient.serviceVersion(),
+        state
+      );
+    });
+    this._msgClient.message((message: IMessageType) => {
+      QmlEngine.appendDebugOutput(message);
+    });
+  }
+  logServiceStateChange(
+    service: string,
+    version: number,
+    newState: QmlDebugConnectionState
+  ) {
+    switch (newState) {
+      case QmlDebugConnectionState.Unavailable:
+        this.showConnectionStateMessage(
+          `Status of "${service}" Version: ${version} changed to 'unavailable'.`
+        );
+        break;
+      case QmlDebugConnectionState.Enabled:
+        this.showConnectionStateMessage(
+          `Status of "${service}" Version: ${version} changed to 'enabled'.`
+        );
+        break;
+      case QmlDebugConnectionState.NotConnected:
+        this.showConnectionStateMessage(
+          `Status of "${service}" Version: ${version} changed to 'not connected'.`
+        );
+        break;
+    }
+  }
+
+  showConnectionStateMessage(message: string) {
+    if (this._isDying) {
+      return;
+    }
+    logger.info('QML Debugger: ' + message);
+  }
+  static appendDebugOutput(message: IMessageType) {
+    switch (message.type as QtMsgType) {
+      case QtMsgType.QtInfoMsg:
+      case QtMsgType.QtDebugMsg:
+        logger.debug(message.message);
+        break;
+      case QtMsgType.QtWarningMsg:
+        logger.warn(message.message);
+        break;
+      case QtMsgType.QtCriticalMsg:
+      case QtMsgType.QtFatalMsg:
+        logger.error(message.message);
+        break;
+      default:
+        logger.info(message.message);
+        break;
+    }
+    // TODO: Print with logger for now and later use vscode debug console
   }
   checkConnectionState() {
     if (!this.isConnected()) {
