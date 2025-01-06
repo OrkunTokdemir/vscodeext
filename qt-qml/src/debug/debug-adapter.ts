@@ -9,7 +9,7 @@ import {
   Server,
   ServerScheme
 } from '@debug/debug-connection';
-import { LoggingDebugSession } from '@vscode/debugadapter';
+import { InitializedEvent, LoggingDebugSession } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { QmlEngine } from '@debug/qml-engine';
 
@@ -37,6 +37,44 @@ export class QmlDebugSession extends LoggingDebugSession {
     super();
 
     logger.info('Creating debug session for session:', session.id);
+  }
+  protected override async setBreakPointsRequest(
+    response: DebugProtocol.SetBreakpointsResponse,
+    args: DebugProtocol.SetBreakpointsArguments,
+    request?: DebugProtocol.Request
+  ): Promise<void> {
+    // dummy await
+    logger.info('Breakpoints:');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    void this;
+    void response;
+    void args;
+    void request;
+    response.success = true;
+    // TODO: Fill response.body otherwise breakpoints will not be set
+    this.sendResponse(response);
+  }
+  protected override setFunctionBreakPointsRequest(
+    response: DebugProtocol.SetFunctionBreakpointsResponse,
+    args: DebugProtocol.SetFunctionBreakpointsArguments,
+    request?: DebugProtocol.Request
+  ): void {
+    logger.info('Function breakpoints:');
+    void this;
+    void response;
+    void args;
+    void request;
+  }
+  protected override setExceptionBreakPointsRequest(
+    response: DebugProtocol.SetExceptionBreakpointsResponse,
+    args: DebugProtocol.SetExceptionBreakpointsArguments,
+    request?: DebugProtocol.Request
+  ): void {
+    logger.info('Exception breakpoints:');
+    void this;
+    void response;
+    void args;
+    void request;
   }
   protected override attachRequest(
     response: DebugProtocol.AttachResponse,
@@ -71,6 +109,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       this._qmlEngine.start();
 
       this.sendResponse(response);
+      this.sendEvent(new InitializedEvent());
     } catch (error) {
       logger.error('Error:', (error as Error).message);
     }

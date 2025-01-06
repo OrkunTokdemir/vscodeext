@@ -126,6 +126,9 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       QmlEngine.appendDebugOutput(message);
     });
   }
+  acceptsBreakpoint() {
+    void this;
+  }
   logServiceStateChange(
     service: string,
     version: number,
