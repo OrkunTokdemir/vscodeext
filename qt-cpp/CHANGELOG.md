@@ -1,5 +1,11 @@
 # Change Log
 
+## 1.3.0 (Jan 9, 2025)
+
+🎉 **Added**
+
+- Initialize kits with QML debug definitions
+
 ## 1.2.0 (Jan 8, 2025)
 
 ⚠️ **Changed**

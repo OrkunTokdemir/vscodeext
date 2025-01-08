@@ -1,8 +1,15 @@
 # Change Log
 
+## 1.3.0 (Jan 9, 2025)
+
+🎉 **Added**
+
+- Ship the `qt-cli` extension with `qt-core`
+- New project and file creation features via `qt-cli`
+
 ## 1.2.0 (Jan 8, 2025)
 
-The same as `1.1.0`
+- Color provider for `qss` files
 
 ## 1.1.0 (Dec 4, 2024)
 
