@@ -124,12 +124,6 @@
         }
       }
     ],
-    "keybindings": [
-      {
-        "key": "f1",
-        "command": "qt-core.documentationSearchForCurrentWord"
-      }
-    ],
     "grammars": [
       {
         "language": "qdoc",
