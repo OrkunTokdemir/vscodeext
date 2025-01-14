@@ -110,6 +110,14 @@ export class DataStream {
   writeBoolean(value: boolean) {
     this.writeInt8(value ? 1 : 0);
   }
+  getSize(): number {
+    return this.writeOffset;
+  }
+  writeSubDataStream(subPacket: DataStream) {
+    this.ensureCapacity(this.writeOffset + subPacket.getSize() + 4);
+    this.writeUInt32BE(subPacket.getSize());
+    this._data.set(subPacket.data, this.writeOffset);
+  }
   // writeStringUTF16LE(value: string) {
   //     const newValueSize = Buffer.byteLength(value, 'utf16le');
   //     this.ensureCapacity(this.writeOffset + newValueSize);

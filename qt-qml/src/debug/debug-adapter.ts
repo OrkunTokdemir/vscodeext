@@ -29,27 +29,77 @@ interface QmlDebugSessionAttachArguments
   paths: Record<string, string>;
 }
 
+export interface QmlBreakpoint {
+  id: number;
+  filename: string;
+  line: number;
+}
+
 export class QmlDebugSession extends LoggingDebugSession {
   // private _debugMessageClient: DebugMessageClient | undefined;
   // private _QmlDebugConnectionManager: QmlDebugConnectionManager | undefined;
   private _qmlEngine: QmlEngine | undefined;
+  private readonly _breakpoints: QmlBreakpoint[] = [];
   public constructor(session: vscode.DebugSession) {
     super();
 
     logger.info('Creating debug session for session:', session.id);
   }
+  findBreakpoint(filename: string, line: number): QmlBreakpoint | undefined {
+    for (const breakpoint of this._breakpoints) {
+      if (breakpoint.filename === filename && breakpoint.line === line) {
+        return breakpoint;
+      }
+    }
+    return undefined;
+  }
+  // Since it is a an external api, we can't change the signature
+  // Disable eslint rule
+  // eslint-disable-next-line @typescript-eslint/require-await
   protected override async setBreakPointsRequest(
     response: DebugProtocol.SetBreakpointsResponse,
     args: DebugProtocol.SetBreakpointsArguments,
     request?: DebugProtocol.Request
   ): Promise<void> {
-    // dummy await
     logger.info('Breakpoints:');
-    await new Promise((resolve) => setTimeout(resolve, 0));
     void this;
     void response;
     void args;
     void request;
+    const breakpointstoRemove: QmlBreakpoint[] = [];
+    void breakpointstoRemove;
+    const breakpointsToAdd: QmlBreakpoint[] = [];
+    if (!args.breakpoints) {
+      // clear all breakpoints for this file
+      return;
+    }
+    for (const breakpoint of args.breakpoints) {
+      if (!args.source.path) {
+        continue;
+      }
+      const existingBreakpoint = this.findBreakpoint(
+        args.source.path,
+        breakpoint.line
+      );
+      if (existingBreakpoint) {
+        breakpointstoRemove.push(existingBreakpoint);
+      } else {
+        const newBreakpoint: QmlBreakpoint = {
+          id: this._breakpoints.length,
+          filename: args.source.path,
+          line: breakpoint.line
+        };
+        this._breakpoints.push(newBreakpoint);
+        breakpointsToAdd.push(newBreakpoint);
+      }
+    }
+    for (const breakpoint of breakpointstoRemove) {
+      const index = this._breakpoints.indexOf(breakpoint);
+      this._breakpoints.splice(index, 1);
+    }
+    for (const breakpoint of breakpointsToAdd) {
+      this._qmlEngine.tryClaimBreakpoint(breakpoint);
+    }
     response.success = true;
     // TODO: Fill response.body otherwise breakpoints will not be set
     this.sendResponse(response);

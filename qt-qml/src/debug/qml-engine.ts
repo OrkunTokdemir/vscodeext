@@ -15,6 +15,9 @@ import {
 import { Timer } from '@debug/timer';
 // import { DebuggerEngine } from '@debug/debugger-engine';
 import { createLogger } from 'qt-lib';
+import { QmlBreakpoint } from '@debug/debug-adapter';
+import { EVENT, V8DEBUG } from '@debug/qmlv8debuggerclientconstants';
+import { Packet } from '@debug/packet';
 
 const logger = createLogger('qml-engine');
 
@@ -69,6 +72,7 @@ enum QtMsgType {
 
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
+  private _sendBuffer : Packet[] = [];
   private readonly _msgClient: DebugMessageClient | undefined;
   private readonly _startMode: DebuggerStartMode =
     DebuggerStartMode.AttachToQmlServer;
@@ -76,7 +80,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   private _isDying = false;
   // private readonly _breakpointsSync = new Map<number, vscode.Breakpoint>();
   // private readonly _breakpointsTemp = new Array<string>();
-  private _state: DebuggerState = DebuggerState.DebuggerNotReady;
+  // private _state = QmlDebugConnectionState.Enabled;
   // private _dbEngine: DebuggerEngine = new DebuggerEngine();
   private _retryOnConnectFail = false;
   private _automaticConnect = false;
@@ -126,7 +130,64 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       QmlEngine.appendDebugOutput(message);
     });
   }
-  acceptsBreakpoint() {
+  tryClaimBreakpoint(bp : QmlBreakpoint) {
+    // if (!this.acceptsBreakpoint(bp)) {
+    //   return false;
+    // }
+    this.requestBreakpointInsertion(bp);
+  }
+  requestBreakpointInsertion(bp : QmlBreakpoint) {
+    this.insertBreakpoint(bp);
+
+  }
+  insertBreakpoint(bp : QmlBreakpoint) {
+    void bp;
+    // this.setBreakpoint(bp);
+  }
+  // void QmlEnginePrivate::setBreakpoint(const QString type, const QString target,
+  //   bool enabled, int line, int column,
+  //   const QString condition, int ignoreCount)
+  setBreakpoint(type: string, target: string, enabled: boolean, line: number, column: number, condition: string, ignoreCount: number) {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "setbreakpoint",
+    //      "arguments" : { "type"        : <"function" or "script" or "scriptId" or "scriptRegExp">
+    //                      "target"      : <function expression or script identification>
+    //                      "line"        : <line in script or function>
+    //                      "column"      : <character position within the line>
+    //                      "enabled"     : <initial enabled state. True or false, default is true>
+    //                      "condition"   : <string with break point condition>
+    //                      "ignoreCount" : <number specifying the number of break point hits to ignore, default value is 0>
+    //                    }
+    //    }
+    if (type === EVENT) {
+
+    } else {
+
+    }
+  }
+  runDirectCommand(type: string, msg: Packet) {
+    const packet = new Packet();
+    packet.writeStringUTF8(V8DEBUG)
+    packet.writeStringUTF8(type);
+    packet.writeSubDataStream(msg);
+    if(this.getState() === QmlDebugConnectionState.Enabled) {
+      void this.sendMessage(packet);
+    } else {
+      this._sendBuffer.push(packet);
+    }
+  }
+  async flushSendBuffer() {
+    if (this.getState() !== QmlDebugConnectionState.Enabled) {
+      throw new Error('Connection is not enabled');
+    }
+    for (const packet of this._sendBuffer) {
+      await this.sendMessage(packet);
+    }
+    this._sendBuffer = [];
+  }
+  acceptsBreakpoint(bp : QmlBreakpoint) {
+    void bp;
     void this;
   }
   logServiceStateChange(

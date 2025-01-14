@@ -511,14 +511,17 @@ export class QmlDebugConnection {
       }
     }
   }
-  // sendMessage(name: string, buffer: Buffer) {
-  //     if (!this.gotHello || !this._plugins.has(name)) {
-  //         return false;
-  //     }
-  //     const packet = new Packet();
-  //     packet.writeStringUTF16(name);
-  //     // packet.writeInt32BE(buffer.length);
-  // }
+  async sendMessage(name: string, message: Packet) {
+      if (!this.gotHello || !this._plugins.has(name)) {
+          return false;
+      }
+      const packet = new Packet();
+      packet.writeStringUTF8(name);
+      packet.writeSubDataStream(message);
+      await this._protocol?.send(packet.data);
+      // TODO: Needs to flush the data?
+      return true;
+  }
   async addClient(name: string, client: QmlDebugClient) {
     if (this._plugins.has(name)) {
       return false;
@@ -599,15 +602,21 @@ export class QmlDebugClient {
     void this;
     // throw new Error('Method not implemented.');
   }
-  // getState() : QmlDebugConnectionState {
-  //     // TODO: Implement
-  // }
-  // sendMessage(buffer: Buffer) {
-  //     if (this.getState() !== QmlDebugConnectionState.Enabled) {
-  //         return;
-  //     }
-  //     this.connection.sendMessage(this.name, buffer);
-  // }
+  getState() : QmlDebugConnectionState {
+    if (!this.connection.isConnected()) {
+      return QmlDebugConnectionState.NotConnected;
+    }
+    if (this.connection.serviceVersion(this.name) !== -1) {
+      return QmlDebugConnectionState.Enabled;
+    }
+    return QmlDebugConnectionState.Unavailable;
+  }
+  async sendMessage(message: Packet) {
+      if (this.getState() !== QmlDebugConnectionState.Enabled) {
+          return;
+      }
+      await this.connection.sendMessage(this.name, message);
+  }
 }
 
 // BaseEngineDebugClient
