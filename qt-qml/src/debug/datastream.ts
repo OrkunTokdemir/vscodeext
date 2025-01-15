@@ -101,6 +101,9 @@ export class DataStream {
     this.writeOffset += newValueSize;
   }
   writeStringUTF8(value: string) {
+    if (value === '') {
+      this.writeUInt32BE(0xffffffff);
+    }
     const newValueSize = Buffer.byteLength(value, 'utf8');
     this.ensureCapacity(this.writeOffset + newValueSize + 4);
     this.writeUInt32BE(newValueSize);
@@ -110,6 +113,14 @@ export class DataStream {
   writeBoolean(value: boolean) {
     this.writeInt8(value ? 1 : 0);
   }
+  writeJsonUTF8(value: object) {
+    const str = JSON.stringify(value);
+    if (str === '') {
+      this.writeStringUTF8('');
+      return;
+    }
+    this.writeStringUTF8(str);
+  }
   getSize(): number {
     return this.writeOffset;
   }
@@ -117,6 +128,11 @@ export class DataStream {
     this.ensureCapacity(this.writeOffset + subPacket.getSize() + 4);
     this.writeUInt32BE(subPacket.getSize());
     this._data.set(subPacket.data, this.writeOffset);
+  }
+  writeBuffer(buffer: Buffer) {
+    this.ensureCapacity(this.writeOffset + buffer.byteLength);
+    buffer.copy(this._data, this.writeOffset);
+    this.writeOffset += buffer.byteLength;
   }
   // writeStringUTF16LE(value: string) {
   //     const newValueSize = Buffer.byteLength(value, 'utf16le');
@@ -266,7 +282,7 @@ export class DataStream {
   readSubDataStream(): DataStream {
     const size = this.readUInt32BE();
     const subPacket = new DataStream(
-      this._data.subarray(this.readOffset, size)
+      this._data.subarray(this.readOffset, this.readOffset + size)
     );
     this.readOffset += size;
     return subPacket;

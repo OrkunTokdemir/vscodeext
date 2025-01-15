@@ -63,7 +63,7 @@ export class PacketProtocol {
       // Need to get trailing data
       if (PacketProtocol.notInProgress == this._inProgressSize) {
         // We need a size header of sizeof(qint32)
-        if (int32SIZE > dev.bytesRead) {
+        if (int32SIZE > dev.readableLength) {
           return;
         }
         // Read size header

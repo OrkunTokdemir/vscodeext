@@ -365,7 +365,7 @@ export class QmlDebugConnection {
       packet.writeStringUTF16(plugin);
     });
     packet.writeInt32BE(QmlDebugConnection.minStreamVersion);
-    packet.writeBoolean(true);
+    packet.writeBoolean(true); // We accept multiple messages per packet
     if (!this._protocol) {
       throw new Error('Protocol not set');
     }
@@ -512,15 +512,15 @@ export class QmlDebugConnection {
     }
   }
   async sendMessage(name: string, message: Packet) {
-      if (!this.gotHello || !this._plugins.has(name)) {
-          return false;
-      }
-      const packet = new Packet();
-      packet.writeStringUTF8(name);
-      packet.writeSubDataStream(message);
-      await this._protocol?.send(packet.data);
-      // TODO: Needs to flush the data?
-      return true;
+    if (!this.gotHello || !this._plugins.has(name)) {
+      return false;
+    }
+    const packet = new Packet();
+    packet.writeStringUTF16(name);
+    packet.writeSubDataStream(message);
+    await this._protocol?.send(packet.data);
+    // TODO: Needs to flush the data?
+    return true;
   }
   async addClient(name: string, client: QmlDebugClient) {
     if (this._plugins.has(name)) {
@@ -602,7 +602,7 @@ export class QmlDebugClient {
     void this;
     // throw new Error('Method not implemented.');
   }
-  getState() : QmlDebugConnectionState {
+  getState(): QmlDebugConnectionState {
     if (!this.connection.isConnected()) {
       return QmlDebugConnectionState.NotConnected;
     }
@@ -612,10 +612,10 @@ export class QmlDebugClient {
     return QmlDebugConnectionState.Unavailable;
   }
   async sendMessage(message: Packet) {
-      if (this.getState() !== QmlDebugConnectionState.Enabled) {
-          return;
-      }
-      await this.connection.sendMessage(this.name, message);
+    if (this.getState() !== QmlDebugConnectionState.Enabled) {
+      return;
+    }
+    await this.connection.sendMessage(this.name, message);
   }
 }
 
@@ -638,6 +638,8 @@ export class QmlEngineDebugClient
   override messageReceived(packet: Packet): void {
     void this;
     void packet;
+    logger.info('QmlEngineDebugClient: messageReceived');
+    logger.info('QmlEngineDebugClient: messageReceived' + this._nextId);
     // TODO: Implement
   }
 }

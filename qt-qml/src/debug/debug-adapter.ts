@@ -53,6 +53,18 @@ export class QmlDebugSession extends LoggingDebugSession {
     }
     return undefined;
   }
+  // eslint-disable-next-line @typescript-eslint/require-await
+  protected override async disconnectRequest(
+    response: DebugProtocol.DisconnectResponse,
+    args: DebugProtocol.DisconnectArguments,
+    request?: DebugProtocol.Request
+  ): Promise<void> {
+    logger.info('Disconnect request:');
+    this._qmlEngine?.closeConnection();
+    void args;
+    void request;
+    this.sendResponse(response);
+  }
   // Since it is a an external api, we can't change the signature
   // Disable eslint rule
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -96,6 +108,9 @@ export class QmlDebugSession extends LoggingDebugSession {
     for (const breakpoint of breakpointstoRemove) {
       const index = this._breakpoints.indexOf(breakpoint);
       this._breakpoints.splice(index, 1);
+    }
+    if (!this._qmlEngine) {
+      throw new Error('QmlEngine not initialized');
     }
     for (const breakpoint of breakpointsToAdd) {
       this._qmlEngine.tryClaimBreakpoint(breakpoint);
