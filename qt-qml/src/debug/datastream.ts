@@ -280,6 +280,13 @@ export class DataStream {
     this.readOffset += length;
     return value;
   }
+  readJsonUTF8(): object {
+    const str = this.readStringUTF8();
+    if (str === '') {
+      return {};
+    }
+    return JSON.parse(str) as object;
+  }
   readSubDataStream(): DataStream {
     const size = this.readUInt32BE();
     const subPacket = new DataStream(

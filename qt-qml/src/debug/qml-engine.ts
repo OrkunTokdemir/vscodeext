@@ -17,8 +17,21 @@ import { Timer } from '@debug/timer';
 import { createLogger } from 'qt-lib';
 import { QmlBreakpoint } from '@debug/debug-adapter';
 import {
+  BREAKONSIGNAL,
+  COLUMN,
+  CONDITION,
   CONNECT,
+  ENABLED,
+  EVENT,
+  IGNORECOUNT,
+  INTERRUPT,
+  LINE,
+  SCRIPTREGEXP,
+  SETBREAKPOINT,
+  TARGET,
+  TYPE,
   V8DEBUG,
+  V8MESSAGE,
   V8REQUEST,
   VERSION
 } from '@debug/qmlv8debuggerclientconstants';
@@ -74,6 +87,18 @@ enum QtMsgType {
   QtWarningMsg,
   QtCriticalMsg,
   QtFatalMsg
+}
+
+interface IQmlMessage {
+  type: string;
+  seq: number;
+}
+
+interface IQmlResponse extends IQmlMessage {
+  request_seq: number;
+  command: string;
+  success: boolean;
+  running: boolean;
 }
 
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
@@ -181,36 +206,103 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this.requestBreakpointInsertion(bp);
   }
   requestBreakpointInsertion(bp: QmlBreakpoint) {
-    void this;
-    void bp;
-    // this.insertBreakpoint(bp);
+    this.insertBreakpoint(bp);
   }
-  // insertBreakpoint(bp : QmlBreakpoint) {
-  //   void bp;
-  //   // this.setBreakpoint(bp);
-  // }
-  // void QmlEnginePrivate::setBreakpoint(const QString type, const QString target,
-  //   bool enabled, int line, int column,
-  //   const QString condition, int ignoreCount)
-  // setBreakpoint(type: string, target: string, enabled: boolean, line: number, column: number, condition: string, ignoreCount: number) {
-  //   //    { "seq"       : <number>,
-  //   //      "type"      : "request",
-  //   //      "command"   : "setbreakpoint",
-  //   //      "arguments" : { "type"        : <"function" or "script" or "scriptId" or "scriptRegExp">
-  //   //                      "target"      : <function expression or script identification>
-  //   //                      "line"        : <line in script or function>
-  //   //                      "column"      : <character position within the line>
-  //   //                      "enabled"     : <initial enabled state. True or false, default is true>
-  //   //                      "condition"   : <string with break point condition>
-  //   //                      "ignoreCount" : <number specifying the number of break point hits to ignore, default value is 0>
-  //   //                    }
-  //   //    }
-  //   if (type === EVENT) {
+  insertBreakpoint(bp: QmlBreakpoint) {
+    this.setBreakpoint(SCRIPTREGEXP, bp.filename, true, bp.line, 0, '', -1);
+  }
 
-  //   } else {
+  setBreakpoint(
+    type: string,
+    target: string,
+    enabled: boolean,
+    line: number,
+    column: number,
+    condition: string,
+    ignoreCount: number
+  ) {
+    void line;
+    void column;
+    void condition;
+    void ignoreCount;
 
-  //   }
-  // }
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "setbreakpoint",
+    //      "arguments" : { "type"        : <"function" or "script" or "scriptId" or "scriptRegExp">
+    //                      "target"      : <function expression or script identification>
+    //                      "line"        : <line in script or function>
+    //                      "column"      : <character position within the line>
+    //                      "enabled"     : <initial enabled state. True or false, default is true>
+    //                      "condition"   : <string with break point condition>
+    //                      "ignoreCount" : <number specifying the number of break point hits to ignore, default value is 0>
+    //                    }
+    //    }
+    if (type === EVENT) {
+      const rs = new Packet();
+      rs.writeStringUTF8(target);
+      rs.writeBoolean(enabled);
+      this.runDirectCommand(BREAKONSIGNAL, rs.data);
+    } else {
+      const cmd = new DebuggerCommand(SETBREAKPOINT);
+      cmd.arg(TYPE, type);
+      cmd.arg(ENABLED, enabled);
+      if (type === SCRIPTREGEXP) {
+        // TODO: Use target file instead here
+        cmd.arg(TARGET, target);
+      } else {
+        cmd.arg(TARGET, target);
+      }
+      if (line) {
+        cmd.arg(LINE, line - 1);
+      }
+      if (column) {
+        cmd.arg(COLUMN, column - 1);
+      }
+      if (condition) {
+        cmd.arg(CONDITION, condition);
+      }
+      if (ignoreCount !== -1) {
+        cmd.arg(IGNORECOUNT, ignoreCount);
+      }
+      this.runCommand(cmd);
+    }
+  }
+  override messageReceived(packet: Packet): void {
+    void this;
+    void packet;
+    const command = packet.readStringUTF8();
+    if (command !== V8DEBUG) {
+      logger.error('Unexpected header:', command);
+      return;
+    }
+    const type = packet.readStringUTF8();
+    logger.info('Received message:', type);
+    if (type == CONNECT) {
+      //debugging session started
+      logger.info(`${V8DEBUG} debugging session started`);
+    } else if (type == INTERRUPT) {
+      //debug break requested
+      logger.info('Debug break requested');
+    } else if (type == BREAKONSIGNAL) {
+      //break on signal handler requested
+      logger.info('Break on signal handler requested');
+    } else if (type == V8MESSAGE) {
+      logger.info('V8 message received');
+    }
+    const message = packet.readJsonUTF8() as IQmlMessage;
+    if (message.type === 'response') {
+      const response = message as IQmlResponse;
+      const debugCommand = response.command;
+      void debugCommand;
+      const success = response.success;
+      if (!success) {
+        logger.info('Request was unsuccessful');
+      }
+      const requestSeq = response.request_seq;
+      logger.info('Request sequence:', requestSeq as unknown as string);
+    }
+  }
   runDirectCommand(type: string, msg: Buffer) {
     const packet = new Packet();
     packet.writeStringUTF8(V8DEBUG);
