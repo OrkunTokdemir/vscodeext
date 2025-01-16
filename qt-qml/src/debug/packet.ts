@@ -141,9 +141,10 @@ export class PacketProtocol {
     }
     const sendSize = buffer.length + 4;
     this._sendingPackets.push(sendSize);
-    const sendSizeLE = to32LE(sendSize);
-    await this.waitUntilWritten(sendSizeLE);
-    await this.waitUntilWritten(buffer);
+    let tempBuffer = Buffer.alloc(4);
+    tempBuffer.writeInt32LE(sendSize);
+    tempBuffer = Buffer.concat([tempBuffer, buffer]);
+    await this.waitUntilWritten(tempBuffer);
     this._bytesWritten.fire(sendSize);
   }
   get onBytesWritten() {
@@ -175,10 +176,4 @@ export class PacketProtocol {
       buffer = buffer.subarray(written);
     }
   }
-}
-
-function to32LE(value: number) {
-  const buffer = Buffer.alloc(4);
-  buffer.writeInt32LE(value);
-  return buffer;
 }

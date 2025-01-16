@@ -127,7 +127,8 @@ export class DataStream {
   writeSubDataStream(subPacket: DataStream) {
     this.ensureCapacity(this.writeOffset + subPacket.getSize() + 4);
     this.writeUInt32BE(subPacket.getSize());
-    this._data.set(subPacket.data, this.writeOffset);
+    subPacket.data.copy(this._data, this.writeOffset);
+    this.writeOffset += subPacket.getSize();
   }
   writeBuffer(buffer: Buffer) {
     this.ensureCapacity(this.writeOffset + buffer.byteLength);

@@ -148,12 +148,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       // this.claimBreakpointsForEngine();
       const cb = () => {
         void this.flushSendBuffer();
-        // const jsonParameters = {
-        //   redundantRefs: false,
-        //   namesAsObjects: false
-        // };
+        const jsonParameters = {
+          redundantRefs: false,
+          namesAsObjects: false
+        };
         const msg = new Packet();
-        msg.writeUInt32BE(0xffffffff);
+        msg.writeJsonUTF8(jsonParameters);
         this.runDirectCommand(CONNECT, msg.data);
         this.runCommand(new DebuggerCommand(VERSION));
       };
