@@ -15,12 +15,14 @@ import {
 import { Timer } from '@debug/timer';
 // import { DebuggerEngine } from '@debug/debugger-engine';
 import { createLogger } from 'qt-lib';
-import { QmlBreakpoint } from '@debug/debug-adapter';
+import { BreakpointState, QmlBreakpoint } from '@debug/debug-adapter';
 import {
   BREAKONSIGNAL,
   COLUMN,
   CONDITION,
   CONNECT,
+  CONTINEDEBUGGING,
+  DISCONNECT,
   ENABLED,
   EVENT,
   IGNORECOUNT,
@@ -99,10 +101,36 @@ interface IQmlResponse extends IQmlMessage {
   command: string;
   success: boolean;
   running: boolean;
+  body: IResponseBodySetBreakpoint;
+}
+
+interface IQmlEvent extends IQmlMessage {
+  event: string;
+  body: IResponseBodyBreak;
+}
+
+interface IResponseBodySetBreakpoint {
+  type: string;
+  breakpoint: number;
+  line?: number;
+  actual_locations?: number[];
+}
+
+interface IResponseBodyBreak {
+  invocationText: string;
+  sourceLineText: string;
+  script: IScript;
+  breakpoints: number[];
+}
+
+interface IScript {
+  name: string;
 }
 
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
+  private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
+  private readonly _breakpointsTemp = new Array<string>();
   private _sendBuffer: Packet[] = [];
   private _sequence = -1;
   private readonly _msgClient: DebugMessageClient | undefined;
@@ -111,7 +139,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   private _server: Server | undefined;
   private _isDying = false;
   // private readonly _breakpointsSync = new Map<number, vscode.Breakpoint>();
-  // private readonly _breakpointsTemp = new Array<string>();
   private _state = DebuggerState.DebuggerNotReady;
   // private _dbEngine: DebuggerEngine = new DebuggerEngine();
   private _retryOnConnectFail = false;
@@ -210,6 +237,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   }
   insertBreakpoint(bp: QmlBreakpoint) {
     this.setBreakpoint(SCRIPTREGEXP, bp.filename, true, bp.line, 0, '', -1);
+    this._breakpointsSync.set(this._sequence, bp);
   }
 
   setBreakpoint(
@@ -269,8 +297,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
   }
   override messageReceived(packet: Packet): void {
-    void this;
-    void packet;
     const command = packet.readStringUTF8();
     if (command !== V8DEBUG) {
       logger.error('Unexpected header:', command);
@@ -289,19 +315,86 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       logger.info('Break on signal handler requested');
     } else if (type == V8MESSAGE) {
       logger.info('V8 message received');
+      this.analyzeV8Message(packet);
     }
+  }
+  analyzeV8Message(packet: Packet) {
     const message = packet.readJsonUTF8() as IQmlMessage;
-    if (message.type === 'response') {
+    const type = message.type;
+    if (type === 'response') {
       const response = message as IQmlResponse;
       const debugCommand = response.command;
-      void debugCommand;
       const success = response.success;
       if (!success) {
         logger.info('Request was unsuccessful');
       }
-      const requestSeq = response.request_seq;
-      logger.info('Request sequence:', requestSeq as unknown as string);
+      const seq = response.request_seq;
+      logger.info('Request sequence:', seq as unknown as string);
+      if (debugCommand === DISCONNECT) {
+        //debugging session ended
+      } else if (debugCommand === CONTINEDEBUGGING) {
+        //do nothing, wait for next break
+      } else if (debugCommand === SETBREAKPOINT) {
+        //                { "seq"         : <number>,
+        //                  "type"        : "response",
+        //                  "request_seq" : <number>,
+        //                  "command"     : "setbreakpoint",
+        //                  "body"        : { "type"       : <"function" or "script">
+        //                                    "breakpoint" : <break point number of the new break point>
+        //                                  }
+        //                  "running"     : <is the VM running after sending this response>
+        //                  "success"     : true
+        //                }
+        const body = response.body;
+        const index = body.breakpoint;
+        logger.info('Breakpoint index:', index as unknown as string);
+        if (this._breakpointsSync.has(seq)) {
+          const bp = this._breakpointsSync.get(seq);
+          this._breakpointsSync.delete(seq);
+          // bp->setParameters(bp->requestedParameters()); // Assume it worked.
+          // bp->setResponseId(index);
+          const actualLocations = body.actual_locations;
+          if (actualLocations) {
+            //The breakpoint requested line should be same as actual line
+            if (bp && bp.state !== BreakpointState.BreakpointInserted) {
+              // bp->setActualLine(actualLocations[0]);
+              // bp->setActualColumn(actualLocations[1]);
+              logger.info('bp.line:', bp.line.toString());
+            }
+          }
+        } else {
+          this._breakpointsTemp.push(seq.toString());
+        }
+      }
+    } else if (type == EVENT) {
+      logger.info('Event received');
+      const response = message as IQmlEvent;
+      const eventType = response.event;
+      if (eventType === 'break') {
+        //break event
+        logger.info('Break event');
+        // clearRefs();
+        const breakData = response.body;
+        const invocationText = breakData.invocationText;
+        const scriptUrl = breakData.script.name;
+        const sourceLineText = breakData.sourceLineText;
+        const v8BreakpointIdList = breakData.breakpoints;
+        logger.info('invocationText:', invocationText);
+        logger.info('scriptUrl:', scriptUrl);
+        logger.info('sourceLineText:', sourceLineText);
+        logger.info('v8BreakpointIdList:', v8BreakpointIdList.join(','));
+
+        // const inferiorStop = true;
+        // if (inferiorStop) {
+        if (this.state === DebuggerState.InferiorRunOk) {
+          this.notifyInferiorSpontaneousStop();
+        }
+        // }
+      }
     }
+  }
+  notifyInferiorSpontaneousStop() {
+    this.setState(DebuggerState.InferiorStopOk);
   }
   runDirectCommand(type: string, msg: Buffer) {
     const packet = new Packet();

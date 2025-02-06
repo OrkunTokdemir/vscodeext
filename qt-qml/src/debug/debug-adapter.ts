@@ -22,6 +22,18 @@ export function registerQmlDebugAdapterFactory() {
   );
 }
 
+export enum BreakpointState {
+  BreakpointNew,
+  BreakpointInsertionRequested, //!< Inferior was told about bp, not ack'ed.
+  BreakpointInsertionProceeding,
+  BreakpointInserted,
+  BreakpointUpdateRequested,
+  BreakpointUpdateProceeding,
+  BreakpointRemoveRequested,
+  BreakpointRemoveProceeding,
+  BreakpointDead
+}
+
 interface QmlDebugSessionAttachArguments
   extends DebugProtocol.AttachRequestArguments {
   host: string;
@@ -33,6 +45,7 @@ export interface QmlBreakpoint {
   id: number;
   filename: string;
   line: number;
+  state: BreakpointState;
 }
 
 export class QmlDebugSession extends LoggingDebugSession {
@@ -99,7 +112,8 @@ export class QmlDebugSession extends LoggingDebugSession {
         const newBreakpoint: QmlBreakpoint = {
           id: this._breakpoints.length,
           filename: args.source.path,
-          line: breakpoint.line
+          line: breakpoint.line,
+          state: BreakpointState.BreakpointInsertionRequested
         };
         this._breakpoints.push(newBreakpoint);
         breakpointsToAdd.push(newBreakpoint);
