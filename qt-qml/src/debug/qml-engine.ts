@@ -121,6 +121,7 @@ interface IResponseBodyBreak {
   sourceLineText: string;
   script: IScript;
   breakpoints: number[];
+  sourceLine: number;
 }
 
 interface IScript {
@@ -249,11 +250,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     condition: string,
     ignoreCount: number
   ) {
-    void line;
-    void column;
-    void condition;
-    void ignoreCount;
-
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "setbreakpoint",
@@ -394,6 +390,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
   }
   notifyInferiorSpontaneousStop() {
+    logger.info('NOTE: INFERIOR SPONTANEOUS STOP');
     this.setState(DebuggerState.InferiorStopOk);
   }
   runDirectCommand(type: string, msg: Buffer) {
