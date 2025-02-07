@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-import { createLogger } from 'qt-lib';
+import {
+  createLogger,
+  getFilename
+} from 'qt-lib';
 import {
   // DebugMessageClient,
   // QmlDebugConnectionManager,
@@ -111,7 +114,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       } else {
         const newBreakpoint: QmlBreakpoint = {
           id: this._breakpoints.length,
-          filename: args.source.path,
+          filename: getFilename(args.source.path),
           line: breakpoint.line,
           state: BreakpointState.BreakpointInsertionRequested
         };

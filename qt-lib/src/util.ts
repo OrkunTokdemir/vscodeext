@@ -297,4 +297,12 @@ class FileWriter {
   }
 }
 
+export function getFilename(filename: string): string {
+  const separatedPath = filename.split(path.sep).pop();
+  if (!separatedPath) {
+    throw new Error('Filename is empty');
+  }
+  return separatedPath;
+}
+
 export const fileWriter = new FileWriter();

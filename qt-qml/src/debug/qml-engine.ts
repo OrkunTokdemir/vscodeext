@@ -39,6 +39,7 @@ import {
 } from '@debug/qmlv8debuggerclientconstants';
 import { Packet } from '@debug/packet';
 import { DebuggerCommand } from '@debug/debugger-command';
+import { isEmpty } from 'lodash';
 
 const logger = createLogger('qml-engine');
 
@@ -237,7 +238,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this.insertBreakpoint(bp);
   }
   insertBreakpoint(bp: QmlBreakpoint) {
-    this.setBreakpoint(SCRIPTREGEXP, bp.filename, true, bp.line, 0, '', -1);
+    this.setBreakpoint(SCRIPTREGEXP, bp.filename, true, bp.line, 0, '', 0);
     this._breakpointsSync.set(this._sequence, bp);
   }
 
@@ -283,12 +284,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       if (column) {
         cmd.arg(COLUMN, column - 1);
       }
-      if (condition) {
+      if (!isEmpty(condition)) {
         cmd.arg(CONDITION, condition);
       }
-      if (ignoreCount !== -1) {
-        cmd.arg(IGNORECOUNT, ignoreCount);
-      }
+      // if (ignoreCount !== 0) {
+      cmd.arg(IGNORECOUNT, ignoreCount);
+      // }
       this.runCommand(cmd);
     }
   }
