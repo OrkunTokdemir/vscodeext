@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-import {
-  createLogger,
-  getFilename
-} from 'qt-lib';
+import { createLogger, getFilename } from 'qt-lib';
 import {
   // DebugMessageClient,
   // QmlDebugConnectionManager,
@@ -44,8 +41,16 @@ interface QmlDebugSessionAttachArguments
   paths: Record<string, string>;
 }
 
+export interface SetBreakpointResult {
+  // type : "response";
+  request_seq: number;
+  // command : string;
+  success: boolean;
+  // running : boolean;
+}
+
 export interface QmlBreakpoint {
-  id: number;
+  id?: number;
   filename: string;
   line: number;
   state: BreakpointState;
@@ -89,16 +94,14 @@ export class QmlDebugSession extends LoggingDebugSession {
     args: DebugProtocol.SetBreakpointsArguments,
     request?: DebugProtocol.Request
   ): Promise<void> {
-    logger.info('Breakpoints:');
-    void this;
-    void response;
-    void args;
+    logger.info('Func: setBreakPointsRequest: Begin');
     void request;
     const breakpointstoRemove: QmlBreakpoint[] = [];
-    void breakpointstoRemove;
+    // void breakpointstoRemove;
     const breakpointsToAdd: QmlBreakpoint[] = [];
     if (!args.breakpoints) {
       // clear all breakpoints for this file
+      logger.error('No breakpoints');
       return;
     }
     for (const breakpoint of args.breakpoints) {
@@ -113,7 +116,6 @@ export class QmlDebugSession extends LoggingDebugSession {
         breakpointstoRemove.push(existingBreakpoint);
       } else {
         const newBreakpoint: QmlBreakpoint = {
-          id: this._breakpoints.length,
           filename: getFilename(args.source.path),
           line: breakpoint.line,
           state: BreakpointState.BreakpointInsertionRequested
@@ -129,11 +131,31 @@ export class QmlDebugSession extends LoggingDebugSession {
     if (!this._qmlEngine) {
       throw new Error('QmlEngine not initialized');
     }
+    response.body = {
+      breakpoints: []
+    };
     for (const breakpoint of breakpointsToAdd) {
-      this._qmlEngine.tryClaimBreakpoint(breakpoint);
+      const seq = this._qmlEngine.tryClaimBreakpoint(breakpoint);
+      if (seq !== undefined) {
+        response.body.breakpoints.push({
+          id: seq,
+          line: breakpoint.line,
+          verified: true
+        });
+      }
     }
     response.success = true;
+    // print response
+    logger.info('setBreakPointsRequest response:', JSON.stringify(response));
     // TODO: Fill response.body otherwise breakpoints will not be set
+    this.sendResponse(response);
+  }
+  protected override initializeRequest(
+    response: DebugProtocol.InitializeResponse,
+    args: DebugProtocol.InitializeRequestArguments
+  ) {
+    logger.info('Initialize request:', JSON.stringify(args));
+    response.body = {};
     this.sendResponse(response);
   }
   protected override setFunctionBreakPointsRequest(
@@ -186,7 +208,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       // }
       // this._debugMessageClient = new DebugMessageClient(connection);
       // void this._debugMessageClient;
-      this._qmlEngine = new QmlEngine();
+      this._qmlEngine = new QmlEngine(this);
       this._qmlEngine.server = server;
       this._qmlEngine.start();
 

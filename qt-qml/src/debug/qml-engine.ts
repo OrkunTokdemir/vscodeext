@@ -15,7 +15,11 @@ import {
 import { Timer } from '@debug/timer';
 // import { DebuggerEngine } from '@debug/debugger-engine';
 import { createLogger } from 'qt-lib';
-import { BreakpointState, QmlBreakpoint } from '@debug/debug-adapter';
+import {
+  BreakpointState,
+  QmlBreakpoint,
+  QmlDebugSession
+} from '@debug/debug-adapter';
 import {
   BREAKONSIGNAL,
   COLUMN,
@@ -40,6 +44,8 @@ import {
 import { Packet } from '@debug/packet';
 import { DebuggerCommand } from '@debug/debugger-command';
 import { isEmpty } from 'lodash';
+import { DebugProtocol } from '@vscode/debugprotocol';
+import { StoppedEvent } from '@vscode/debugadapter';
 
 const logger = createLogger('qml-engine');
 
@@ -133,6 +139,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
+  private readonly mainQmlThreadId = 1;
   private _sendBuffer: Packet[] = [];
   private _sequence = -1;
   private readonly _msgClient: DebugMessageClient | undefined;
@@ -145,10 +152,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   // private _dbEngine: DebuggerEngine = new DebuggerEngine();
   private _retryOnConnectFail = false;
   private _automaticConnect = false;
+  private readonly _session: QmlDebugSession;
   private readonly _connectionTimer: Timer = new Timer();
-  constructor() {
+  constructor(session: QmlDebugSession) {
     super('V8Debugger', new QmlDebugConnection());
     console.log('QmlEngine');
+    this._session = session;
     // connect(connection, &QmlDebugConnection::connectionFailed,
     //   this, &QmlEngine::connectionFailed);
     // connect(connection, &QmlDebugConnection::connected,
@@ -215,15 +224,17 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
   }
   runCommand(command: DebuggerCommand) {
+    ++this._sequence;
     const object = {
       type: 'request',
       command: command.function,
-      seq: ++this._sequence,
+      seq: this._sequence,
       arguments: command.args
     };
     const msg = new Packet();
     msg.writeJsonUTF8(object);
     this.runDirectCommand(V8REQUEST, msg.data);
+    return this._sequence;
   }
   claimBreakpointsForEngine() {
     void this;
@@ -232,14 +243,25 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     // if (!this.acceptsBreakpoint(bp)) {
     //   return false;
     // }
-    this.requestBreakpointInsertion(bp);
+    return this.requestBreakpointInsertion(bp);
   }
   requestBreakpointInsertion(bp: QmlBreakpoint) {
-    this.insertBreakpoint(bp);
+    return this.insertBreakpoint(bp);
   }
   insertBreakpoint(bp: QmlBreakpoint) {
-    this.setBreakpoint(SCRIPTREGEXP, bp.filename, true, bp.line, 0, '', 0);
-    this._breakpointsSync.set(this._sequence, bp);
+    const seq = this.setBreakpoint(
+      SCRIPTREGEXP,
+      bp.filename,
+      true,
+      bp.line,
+      0,
+      '',
+      0
+    );
+    if (seq) {
+      this._breakpointsSync.set(seq, bp);
+    }
+    return seq;
   }
 
   setBreakpoint(
@@ -264,10 +286,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //                    }
     //    }
     if (type === EVENT) {
+      // TODO: Do we need EVENT?
       const rs = new Packet();
       rs.writeStringUTF8(target);
       rs.writeBoolean(enabled);
       this.runDirectCommand(BREAKONSIGNAL, rs.data);
+      return undefined;
     } else {
       const cmd = new DebuggerCommand(SETBREAKPOINT);
       cmd.arg(TYPE, type);
@@ -290,7 +314,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       // if (ignoreCount !== 0) {
       cmd.arg(IGNORECOUNT, ignoreCount);
       // }
-      this.runCommand(cmd);
+      return this.runCommand(cmd);
     }
   }
   override messageReceived(packet: Packet): void {
@@ -380,19 +404,34 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         logger.info('scriptUrl:', scriptUrl);
         logger.info('sourceLineText:', sourceLineText);
         logger.info('v8BreakpointIdList:', v8BreakpointIdList.join(','));
-
+        // const v8Breakpoints: QmlBreakpoint[] = [];
+        // v8BreakpointIdList.forEach((v8BreakpointId) => {
+        //   const ret = this._breakpointsSync.get(v8BreakpointId);
+        //   if (ret) {
+        //     v8Breakpoints.push(ret);
+        //   }
+        // });
         // const inferiorStop = true;
         // if (inferiorStop) {
         if (this.state === DebuggerState.InferiorRunOk) {
-          this.notifyInferiorSpontaneousStop();
+          this.notifyInferiorSpontaneousStop(v8BreakpointIdList);
         }
-        // }
       }
     }
   }
-  notifyInferiorSpontaneousStop() {
+
+  notifyInferiorSpontaneousStop(breakpointIds: number[]) {
     logger.info('NOTE: INFERIOR SPONTANEOUS STOP');
     this.setState(DebuggerState.InferiorStopOk);
+    const stoppedEvent: DebugProtocol.StoppedEvent = new StoppedEvent(
+      'breakpoint',
+      this.mainQmlThreadId
+    );
+    stoppedEvent.body.hitBreakpointIds = breakpointIds;
+    stoppedEvent.body.description = 'Test 1';
+    // print stoppedEvent
+    logger.info('Stopped event: breakpointIds: ', breakpointIds.join(','));
+    this._session.sendEvent(stoppedEvent);
   }
   runDirectCommand(type: string, msg: Buffer) {
     const packet = new Packet();
