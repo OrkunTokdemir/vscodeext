@@ -9,7 +9,11 @@ import {
   Server,
   ServerScheme
 } from '@debug/debug-connection';
-import { InitializedEvent, LoggingDebugSession } from '@vscode/debugadapter';
+import {
+  InitializedEvent,
+  LoggingDebugSession,
+  Thread
+} from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { QmlEngine } from '@debug/qml-engine';
 
@@ -169,6 +173,52 @@ export class QmlDebugSession extends LoggingDebugSession {
     void args;
     void request;
   }
+  protected override threadsRequest(
+    response: DebugProtocol.ThreadsResponse,
+    request?: DebugProtocol.Request
+  ) {
+    logger.info('threadsRequest:');
+    void request;
+    if (!this._qmlEngine) {
+      throw new Error('QmlEngine not initialized');
+    }
+    response.body = {
+      threads: [new Thread(this._qmlEngine.mainQmlThreadId, 'Main Thread')]
+    };
+    this.sendResponse(response);
+  }
+  protected override stackTraceRequest(
+    response: DebugProtocol.StackTraceResponse,
+    args: DebugProtocol.StackTraceArguments,
+    request?: DebugProtocol.Request
+  ) {
+    logger.info('stackTraceRequest:', JSON.stringify(args));
+    response.body = {
+      stackFrames: []
+    };
+    void request;
+    void this;
+    response.success = true;
+    const result = await this._qmlEngine.backtrace();
+    // response.body = {
+    //   stackFrames: [
+    //     {
+    //       id: 0,
+    //       source: {
+    //         name: 'Main.qml',
+    //         path: '/home/orkun/qt_work/qt_projects/calqlatr/Main.qml',
+    //         sourceReference: 0
+    //       },
+    //       line: 92,
+    //       column: 0,
+    //       name: 'digitPressed'
+    //     }
+    //   ],
+    //   totalFrames: 2
+    // };
+    this.sendResponse(response);
+  }
+
   protected override setExceptionBreakPointsRequest(
     response: DebugProtocol.SetExceptionBreakpointsResponse,
     args: DebugProtocol.SetExceptionBreakpointsArguments,

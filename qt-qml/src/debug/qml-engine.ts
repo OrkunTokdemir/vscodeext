@@ -21,6 +21,7 @@ import {
   QmlDebugSession
 } from '@debug/debug-adapter';
 import {
+  BACKTRACE,
   BREAKONSIGNAL,
   COLUMN,
   CONDITION,
@@ -139,7 +140,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
-  private readonly mainQmlThreadId = 1;
+  readonly mainQmlThreadId = 1;
   private _sendBuffer: Packet[] = [];
   private _sequence = -1;
   private readonly _msgClient: DebugMessageClient | undefined;
@@ -316,6 +317,20 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       // }
       return this.runCommand(cmd);
     }
+  }
+  async backtrace() {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "backtrace",
+    //      "arguments" : { "fromFrame" : <number>
+    //                      "toFrame" : <number>
+    //                      "bottom" : <boolean, set to true if the bottom of the
+    //                          stack is requested>
+    //                    }
+    //    }
+
+    const cmd = new DebuggerCommand(BACKTRACE);
+    this.runCommand(cmd, CB(handleBacktrace));
   }
   override messageReceived(packet: Packet): void {
     const command = packet.readStringUTF8();
