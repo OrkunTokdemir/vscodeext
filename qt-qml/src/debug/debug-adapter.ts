@@ -187,19 +187,22 @@ export class QmlDebugSession extends LoggingDebugSession {
     };
     this.sendResponse(response);
   }
-  protected override stackTraceRequest(
+  protected override async stackTraceRequest(
     response: DebugProtocol.StackTraceResponse,
     args: DebugProtocol.StackTraceArguments,
     request?: DebugProtocol.Request
   ) {
+    if (!this._qmlEngine) {
+      throw new Error('QmlEngine not initialized');
+    }
     logger.info('stackTraceRequest:', JSON.stringify(args));
     response.body = {
       stackFrames: []
     };
     void request;
     void this;
-    response.success = true;
-    const result = await this._qmlEngine.backtrace();
+    // response.success = true;
+    await this._qmlEngine.backtrace(response, args);
     // response.body = {
     //   stackFrames: [
     //     {
@@ -261,6 +264,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       this._qmlEngine = new QmlEngine(this);
       this._qmlEngine.server = server;
       this._qmlEngine.start();
+      this._qmlEngine.pathMappings = new Map(Object.entries(args.paths));
 
       this.sendResponse(response);
       this.sendEvent(new InitializedEvent());

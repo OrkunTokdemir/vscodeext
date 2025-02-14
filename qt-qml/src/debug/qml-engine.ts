@@ -46,7 +46,8 @@ import { Packet } from '@debug/packet';
 import { DebuggerCommand } from '@debug/debugger-command';
 import { isEmpty } from 'lodash';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { StoppedEvent } from '@vscode/debugadapter';
+import { Source, StackFrame, StoppedEvent } from '@vscode/debugadapter';
+import path from 'path';
 
 const logger = createLogger('qml-engine');
 
@@ -136,8 +137,59 @@ interface IScript {
   name: string;
 }
 
+interface QmlMessage {
+  type: 'request' | 'event' | 'response';
+  seq: number;
+}
+
+interface QmlResponse<QmlResponseBody> extends QmlMessage {
+  type: 'response';
+  request_seq: number;
+  command: string;
+  success: boolean;
+  running: boolean;
+  body: QmlResponseBody;
+}
+
+interface QmlVariable {
+  handle: number;
+  name?: string;
+  type: string;
+  value: unknown;
+  ref?: number;
+  properties?: QmlVariable[];
+}
+
+interface QmlScope {
+  frameIndex: number;
+  index: number;
+  type: number;
+  object?: QmlVariable;
+}
+
+interface QmlFrame {
+  index: number;
+  func: string;
+  script: string;
+  line: number;
+  debuggerFrame: boolean;
+  scopes: QmlScope[];
+}
+
+interface QmlBacktrace {
+  fromFrame: number;
+  toFrame: number;
+  frames: QmlFrame[];
+}
+
+interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
+  command: 'backtrace';
+}
+
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
+  private _pathMappings = new Map<string, string>();
+  private readonly _callbackForToken = new Map<number, unknown>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
   readonly mainQmlThreadId = 1;
@@ -201,6 +253,27 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       QmlEngine.appendDebugOutput(message);
     });
   }
+  get pathMappings() {
+    return this._pathMappings;
+  }
+  set pathMappings(pathMappings: Map<string, string>) {
+    this._pathMappings = pathMappings;
+  }
+
+  public mapPathFrom(filename: string): string {
+    const parsed = path.parse(path.normalize(filename));
+    for (const [virtualPath, physicalPath] of this.pathMappings) {
+      if (parsed.dir.startsWith(virtualPath)) {
+        const relativePath = parsed.dir.slice(
+          virtualPath.length,
+          parsed.dir.length
+        );
+        return physicalPath + relativePath + path.sep + parsed.base;
+      }
+    }
+    return filename;
+  }
+
   override stateChanged(state: QmlDebugConnectionState): void {
     // engine->logServiceStateChange(name(), serviceVersion(), state);
     logger.info(
@@ -224,7 +297,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       Timer.singleShot(0, cb);
     }
   }
-  runCommand(command: DebuggerCommand) {
+  runCommand(command: DebuggerCommand, cb: unknown = undefined) {
     ++this._sequence;
     const object = {
       type: 'request',
@@ -232,6 +305,9 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       seq: this._sequence,
       arguments: command.args
     };
+    if (cb) {
+      this._callbackForToken.set(this._sequence, cb);
+    }
     const msg = new Packet();
     msg.writeJsonUTF8(object);
     this.runDirectCommand(V8REQUEST, msg.data);
@@ -318,7 +394,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       return this.runCommand(cmd);
     }
   }
-  async backtrace() {
+  async backtrace(
+    response: DebugProtocol.StackTraceResponse,
+    args: DebugProtocol.StackTraceArguments
+  ) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "backtrace",
@@ -330,7 +409,54 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //    }
 
     const cmd = new DebuggerCommand(BACKTRACE);
-    this.runCommand(cmd, CB(handleBacktrace));
+    // this.runCommand(cmd, this.handleBacktrace);
+    const task = new Promise<unknown>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: unknown) => {
+        this.handleBacktrace(debuggerResponse, resolve);
+      });
+    });
+    const result = await task;
+    const backtrace = (result as QmlBacktraceResponse).body;
+    response.body.totalFrames = backtrace.frames.length;
+    let frameCount = 0;
+    const stackFrames = backtrace.frames
+      .filter((_value, index) => {
+        if (args.startFrame !== undefined) {
+          if (index < args.startFrame) {
+            return false;
+          }
+        }
+
+        if (args.levels !== undefined) {
+          if (frameCount >= args.levels) {
+            return false;
+          }
+          frameCount++;
+        }
+
+        return true;
+      })
+      .map<StackFrame>((frame) => {
+        const physicalPath = this.mapPathFrom(frame.script);
+        const parsedPath = path.parse(physicalPath);
+        return new StackFrame(
+          frame.index,
+          frame.func,
+          new Source(parsedPath.base, physicalPath),
+          frame.line + 1
+        );
+      });
+    response.body = {
+      stackFrames: stackFrames
+    };
+    response.success = true;
+    this._session.sendResponse(response);
+  }
+  handleBacktrace(response: unknown, resolve: (response: unknown) => void) {
+    void this;
+    const backtrace = response as QmlBacktraceResponse;
+    void backtrace;
+    resolve(response);
   }
   override messageReceived(packet: Packet): void {
     const command = packet.readStringUTF8();
@@ -365,6 +491,14 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         logger.info('Request was unsuccessful');
       }
       const seq = response.request_seq;
+      if (this._callbackForToken.has(seq)) {
+        const cb = this._callbackForToken.get(seq);
+        this._callbackForToken.delete(seq);
+        if (cb) {
+          const castedCB = cb as (response: unknown) => void;
+          castedCB(response);
+        }
+      }
       logger.info('Request sequence:', seq as unknown as string);
       if (debugCommand === DISCONNECT) {
         //debugging session ended
