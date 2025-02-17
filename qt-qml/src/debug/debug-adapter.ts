@@ -221,6 +221,18 @@ export class QmlDebugSession extends LoggingDebugSession {
     // };
     this.sendResponse(response);
   }
+  protected override continueRequest(
+    response: DebugProtocol.ContinueResponse,
+    args: DebugProtocol.ContinueArguments,
+    request?: DebugProtocol.Request
+  ) {
+    if (!this._qmlEngine) {
+      throw new Error('QmlEngine not initialized');
+    }
+    void response;
+    void request;
+    void args;
+  }
 
   protected override setExceptionBreakPointsRequest(
     response: DebugProtocol.SetExceptionBreakpointsResponse,

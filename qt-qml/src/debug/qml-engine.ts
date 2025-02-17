@@ -31,8 +31,11 @@ import {
   ENABLED,
   EVENT,
   IGNORECOUNT,
+  IN,
   INTERRUPT,
   LINE,
+  NEXT,
+  OUT,
   SCRIPTREGEXP,
   SETBREAKPOINT,
   TARGET,
@@ -98,6 +101,13 @@ enum QtMsgType {
   QtWarningMsg,
   QtCriticalMsg,
   QtFatalMsg
+}
+
+enum StepAction {
+  Continue,
+  StepIn,
+  StepOut,
+  Next
 }
 
 interface IQmlMessage {
@@ -188,6 +198,7 @@ interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
 
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
+  private _previousStepAction = StepAction.Continue;
   private _pathMappings = new Map<string, string>();
   private readonly _callbackForToken = new Map<number, unknown>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
@@ -479,6 +490,33 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       logger.info('V8 message received');
       this.analyzeV8Message(packet);
     }
+  }
+  continueDebugging(action: StepAction) {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "continue",
+    //      "arguments" : { "stepaction" : <"in", "next" or "out">,
+    //                      "stepcount"  : <number of steps (default 1)>
+    //                    }
+    //    }
+    const cmd = new DebuggerCommand(CONTINEDEBUGGING);
+    // if (action == StepIn)
+    //   cmd.arg(STEPACTION, IN);
+    // else if (action == StepOut)
+    //   cmd.arg(STEPACTION, OUT);
+    // else if (action == Next)
+    //   cmd.arg(STEPACTION, NEXT);
+    if (action === StepAction.StepIn) {
+      cmd.arg(TYPE, IN);
+    } else if (action === StepAction.StepOut) {
+      cmd.arg(TYPE, OUT);
+    } else if (action === StepAction.Next) {
+      cmd.arg(TYPE, NEXT);
+    }
+
+    this.runCommand(cmd);
+    this._previousStepAction = action;
+    void this._previousStepAction;
   }
   analyzeV8Message(packet: Packet) {
     const message = packet.readJsonUTF8() as IQmlMessage;
