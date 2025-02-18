@@ -38,6 +38,7 @@ import {
   OUT,
   SCRIPTREGEXP,
   SETBREAKPOINT,
+  STEPACTION,
   TARGET,
   TYPE,
   V8DEBUG,
@@ -103,7 +104,7 @@ enum QtMsgType {
   QtFatalMsg
 }
 
-enum StepAction {
+export enum StepAction {
   Continue,
   StepIn,
   StepOut,
@@ -192,13 +193,17 @@ interface QmlBacktrace {
   frames: QmlFrame[];
 }
 
+export interface QmlContinueResponse extends QmlResponse<undefined> {
+  command: 'continue';
+}
+
 interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
   command: 'backtrace';
 }
 
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   override _connection = new QmlDebugConnection();
-  private _previousStepAction = StepAction.Continue;
+  // private _previousStepAction = StepAction.Continue;
   private _pathMappings = new Map<string, string>();
   private readonly _callbackForToken = new Map<number, unknown>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
@@ -461,7 +466,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       stackFrames: stackFrames
     };
     response.success = true;
-    this._session.sendResponse(response);
+    // this._session.sendResponse(response);
   }
   handleBacktrace(response: unknown, resolve: (response: unknown) => void) {
     void this;
@@ -491,7 +496,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       this.analyzeV8Message(packet);
     }
   }
-  continueDebugging(action: StepAction) {
+  async continueDebugging(action: StepAction) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "continue",
@@ -500,23 +505,32 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //                    }
     //    }
     const cmd = new DebuggerCommand(CONTINEDEBUGGING);
-    // if (action == StepIn)
-    //   cmd.arg(STEPACTION, IN);
-    // else if (action == StepOut)
-    //   cmd.arg(STEPACTION, OUT);
-    // else if (action == Next)
-    //   cmd.arg(STEPACTION, NEXT);
+
     if (action === StepAction.StepIn) {
-      cmd.arg(TYPE, IN);
+      cmd.arg(STEPACTION, IN);
     } else if (action === StepAction.StepOut) {
-      cmd.arg(TYPE, OUT);
+      cmd.arg(STEPACTION, OUT);
     } else if (action === StepAction.Next) {
-      cmd.arg(TYPE, NEXT);
+      cmd.arg(STEPACTION, NEXT);
     }
 
-    this.runCommand(cmd);
-    this._previousStepAction = action;
-    void this._previousStepAction;
+    // this._previousStepAction = action;
+
+    const task = new Promise<unknown>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: unknown) => {
+        this.handleContinueDebugging(debuggerResponse, resolve);
+        this.notifyInferiorRunOk();
+      });
+    });
+    return task;
+  }
+  handleContinueDebugging(
+    response: unknown,
+    resolve: (response: unknown) => void
+  ) {
+    void this;
+    const rsp = response as QmlContinueResponse;
+    resolve(rsp);
   }
   analyzeV8Message(packet: Packet) {
     const message = packet.readJsonUTF8() as IQmlMessage;
@@ -539,8 +553,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       }
       logger.info('Request sequence:', seq as unknown as string);
       if (debugCommand === DISCONNECT) {
+        logger.info('Debugging session ended');
         //debugging session ended
       } else if (debugCommand === CONTINEDEBUGGING) {
+        logger.info('Continue debugging');
         //do nothing, wait for next break
       } else if (debugCommand === SETBREAKPOINT) {
         //                { "seq"         : <number>,
@@ -605,6 +621,9 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         }
       }
     }
+  }
+  notifyInferiorRunOk() {
+    this.setState(DebuggerState.InferiorRunOk);
   }
 
   notifyInferiorSpontaneousStop(breakpointIds: number[]) {

@@ -12,10 +12,11 @@ import {
 import {
   InitializedEvent,
   LoggingDebugSession,
+  TerminatedEvent,
   Thread
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { QmlEngine } from '@debug/qml-engine';
+import { QmlContinueResponse, QmlEngine, StepAction } from '@debug/qml-engine';
 
 const logger = createLogger('project');
 
@@ -221,17 +222,105 @@ export class QmlDebugSession extends LoggingDebugSession {
     // };
     this.sendResponse(response);
   }
-  protected override continueRequest(
+  protected override async continueRequest(
     response: DebugProtocol.ContinueResponse,
     args: DebugProtocol.ContinueArguments,
     request?: DebugProtocol.Request
   ) {
-    if (!this._qmlEngine) {
-      throw new Error('QmlEngine not initialized');
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QmlEngine not initialized');
+      }
+      void request;
+      void args;
+      const result = (await this._qmlEngine.continueDebugging(
+        StepAction.Continue
+      )) as QmlContinueResponse;
+      if (!result.success) {
+        response.success = false;
+      }
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
     }
-    void response;
-    void request;
-    void args;
+  }
+  protected override async stepInRequest(
+    response: DebugProtocol.StepInResponse,
+    args: DebugProtocol.StepInArguments,
+    request?: DebugProtocol.Request
+  ) {
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QmlEngine not initialized');
+      }
+      void request;
+      void args;
+      const result = (await this._qmlEngine.continueDebugging(
+        StepAction.StepIn
+      )) as QmlContinueResponse;
+      if (!result.success) {
+        response.success = false;
+      }
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
+  }
+  protected override async stepOutRequest(
+    response: DebugProtocol.StepOutResponse,
+    args: DebugProtocol.StepOutArguments,
+    request?: DebugProtocol.Request
+  ) {
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QmlEngine not initialized');
+      }
+      void request;
+      void args;
+      const result = (await this._qmlEngine.continueDebugging(
+        StepAction.StepOut
+      )) as QmlContinueResponse;
+      if (!result.success) {
+        response.success = false;
+      }
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
+  }
+  protected override async nextRequest(
+    response: DebugProtocol.NextResponse,
+    args: DebugProtocol.NextArguments,
+    request?: DebugProtocol.Request
+  ) {
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QmlEngine not initialized');
+      }
+      void request;
+      void args;
+      const result = (await this._qmlEngine.continueDebugging(
+        StepAction.Next
+      )) as QmlContinueResponse;
+      if (!result.success) {
+        response.success = false;
+      }
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
+  }
+  private sendError(
+    response: DebugProtocol.Response,
+    number: number,
+    err: string
+  ) {
+    this.sendErrorResponse(response, {
+      id: number,
+      format: 'QML Debug: ' + err,
+      showUser: true
+    });
+    this.sendEvent(new TerminatedEvent());
   }
 
   protected override setExceptionBreakPointsRequest(
