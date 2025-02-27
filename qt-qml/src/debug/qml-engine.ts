@@ -13,7 +13,6 @@ import {
   QmlDebugConnectionState
 } from '@debug/debug-connection';
 import { Timer } from '@debug/timer';
-// import { DebuggerEngine } from '@debug/debugger-engine';
 import { createLogger } from 'qt-lib';
 import {
   BreakpointState,
@@ -55,7 +54,7 @@ import path from 'path';
 
 const logger = createLogger('qml-engine');
 
-enum DebuggerState {
+export enum DebuggerState {
   DebuggerNotReady, // Debugger not started
 
   EngineSetupRequested, // Engine starts
@@ -202,11 +201,13 @@ interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
 }
 
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
-  //   override _connection = new QmlDebugConnection();
+  // override _connection = new QmlDebugConnection();
   // private _previousStepAction = StepAction.Continue;
+  private _connectionState = QmlDebugConnectionState.Unavailable;
   private _pathMappings = new Map<string, string>();
   private readonly _callbackForToken = new Map<number, unknown>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
+  // private readonly __deferredBreakpoints = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
   readonly mainQmlThreadId = 1;
   private _sendBuffer: Packet[] = [];
@@ -225,7 +226,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   private readonly _connectionTimer: Timer = new Timer();
   constructor(session: QmlDebugSession) {
     super('V8Debugger', new QmlDebugConnection());
-    console.log('QmlEngine');
     this._session = session;
     // connect(connection, &QmlDebugConnection::connectionFailed,
     //   this, &QmlEngine::connectionFailed);
@@ -289,8 +289,11 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     return filename;
   }
-
+  get connectionState() {
+    return this._connectionState;
+  }
   override stateChanged(state: QmlDebugConnectionState): void {
+    this._connectionState = state;
     // engine->logServiceStateChange(name(), serviceVersion(), state);
     logger.info(
       this.name,
@@ -331,6 +334,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   }
   claimBreakpointsForEngine() {
     void this;
+    // for (const [seq, bp] of this.__deferredBreakpoints) {
+    //   this.tryClaimBreakpoint(bp);
+    //   this.__deferredBreakpoints.delete(seq);
+    // }
   }
   tryClaimBreakpoint(bp: QmlBreakpoint) {
     // if (!this.acceptsBreakpoint(bp)) {
@@ -425,7 +432,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //    }
 
     const cmd = new DebuggerCommand(BACKTRACE);
-    // this.runCommand(cmd, this.handleBacktrace);
+    // wait until the backtrace response is received
     const task = new Promise<unknown>((resolve) => {
       this.runCommand(cmd, (debuggerResponse: unknown) => {
         this.handleBacktrace(debuggerResponse, resolve);
@@ -483,6 +490,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     const type = packet.readStringUTF8();
     logger.info('Received message:', type);
     if (type == CONNECT) {
+      this.stateChanged(QmlDebugConnectionState.Connected);
       //debugging session started
       logger.info(`${V8DEBUG} debugging session started`);
     } else if (type == INTERRUPT) {
@@ -682,6 +690,11 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       case QmlDebugConnectionState.NotConnected:
         this.showConnectionStateMessage(
           `Status of "${service}" Version: ${version} changed to 'not connected'.`
+        );
+        break;
+      case QmlDebugConnectionState.Connected:
+        this.showConnectionStateMessage(
+          `Status of "${service}" Version: ${version} changed to 'connected'.`
         );
         break;
     }

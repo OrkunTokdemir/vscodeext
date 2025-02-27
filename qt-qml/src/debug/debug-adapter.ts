@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-import { createLogger, getFilename } from 'qt-lib';
+import { createLogger, delay, getFilename } from 'qt-lib';
 import {
+  QmlDebugConnectionState,
   // DebugMessageClient,
   // QmlDebugConnectionManager,
   Server,
@@ -139,6 +140,12 @@ export class QmlDebugSession extends LoggingDebugSession {
     response.body = {
       breakpoints: []
     };
+    // wait until debugger is ready
+    while (
+      this._qmlEngine.connectionState !== QmlDebugConnectionState.Connected
+    ) {
+      await delay(1000);
+    }
     for (const breakpoint of breakpointsToAdd) {
       const seq = this._qmlEngine.tryClaimBreakpoint(breakpoint);
       if (seq !== undefined) {
@@ -150,9 +157,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       }
     }
     response.success = true;
-    // print response
     logger.info('setBreakPointsRequest response:', JSON.stringify(response));
-    // TODO: Fill response.body otherwise breakpoints will not be set
     this.sendResponse(response);
   }
   protected override initializeRequest(
@@ -193,34 +198,20 @@ export class QmlDebugSession extends LoggingDebugSession {
     args: DebugProtocol.StackTraceArguments,
     request?: DebugProtocol.Request
   ) {
-    if (!this._qmlEngine) {
-      throw new Error('QmlEngine not initialized');
-    }
-    logger.info('stackTraceRequest:', JSON.stringify(args));
-    response.body = {
-      stackFrames: []
-    };
     void request;
-    void this;
-    // response.success = true;
-    await this._qmlEngine.backtrace(response, args);
-    // response.body = {
-    //   stackFrames: [
-    //     {
-    //       id: 0,
-    //       source: {
-    //         name: 'Main.qml',
-    //         path: '/home/orkun/qt_work/qt_projects/calqlatr/Main.qml',
-    //         sourceReference: 0
-    //       },
-    //       line: 92,
-    //       column: 0,
-    //       name: 'digitPressed'
-    //     }
-    //   ],
-    //   totalFrames: 2
-    // };
-    this.sendResponse(response);
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QmlEngine not initialized');
+      }
+      logger.info('stackTraceRequest:', JSON.stringify(args));
+      response.body = {
+        stackFrames: []
+      };
+      await this._qmlEngine.backtrace(response, args);
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
   }
   protected override async continueRequest(
     response: DebugProtocol.ContinueResponse,
@@ -369,8 +360,8 @@ export class QmlDebugSession extends LoggingDebugSession {
 
       this.sendResponse(response);
       this.sendEvent(new InitializedEvent());
-    } catch (error) {
-      logger.error('Error:', (error as Error).message);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
     }
   }
 }

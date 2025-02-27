@@ -565,7 +565,8 @@ export class QmlDebugConnection {
 export enum QmlDebugConnectionState {
   NotConnected,
   Unavailable,
-  Enabled
+  Enabled,
+  Connected
 }
 
 export interface IQmlDebugClient {
