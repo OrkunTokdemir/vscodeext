@@ -22,6 +22,8 @@ import {
 import {
   BACKTRACE,
   BREAKONSIGNAL,
+  BREAKPOINT,
+  CLEARBREAKPOINT,
   COLUMN,
   CONDITION,
   CONNECT,
@@ -364,6 +366,23 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     return seq;
   }
 
+  clearBreakpoint(bp: QmlBreakpoint) {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "clearbreakpoint",
+    //      "arguments" : { "breakpoint" : <number of the break point to clear>
+    //                    }
+    //    }
+
+    if (bp.id === undefined) {
+      throw new Error('Breakpoint id is not set');
+    }
+
+    const cmd = new DebuggerCommand(CLEARBREAKPOINT);
+    cmd.arg(BREAKPOINT, bp.id);
+    return this.runCommand(cmd);
+  }
+
   setBreakpoint(
     type: string,
     target: string,
@@ -565,6 +584,8 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         //debugging session ended
       } else if (debugCommand === CONTINEDEBUGGING) {
         logger.info('Continue debugging');
+      } else if (debugCommand === CLEARBREAKPOINT) {
+        logger.info('Clear breakpoint');
         //do nothing, wait for next break
       } else if (debugCommand === SETBREAKPOINT) {
         //                { "seq"         : <number>,
