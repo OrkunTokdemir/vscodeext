@@ -379,6 +379,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
 
     const cmd = new DebuggerCommand(CLEARBREAKPOINT);
+    // TODO: Use response id instead of seq
     cmd.arg(BREAKPOINT, bp.id);
     return this.runCommand(cmd);
   }

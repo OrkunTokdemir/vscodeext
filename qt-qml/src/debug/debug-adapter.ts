@@ -194,7 +194,8 @@ export class QmlDebugSession extends LoggingDebugSession {
       for (const breakpoint of breakpointsToAdd) {
         const seq = this._qmlEngine.tryClaimBreakpoint(breakpoint);
         if (seq !== undefined) {
-          breakpoint.id = seq;
+          // TODO: Use response id instead of seq
+          // breakpoint.id = seq;
           // response.body.breakpoints.push({
           //   id: seq,
           //   line: breakpoint.line,
