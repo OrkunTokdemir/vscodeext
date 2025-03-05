@@ -163,6 +163,15 @@ interface QmlResponse<QmlResponseBody> extends QmlMessage {
   body: QmlResponseBody;
 }
 
+interface QmlBreakpointResponse {
+  breakpoint: number;
+  type: string;
+}
+
+interface QmlSetBreakpointResponse extends QmlResponse<QmlBreakpointResponse> {
+  command: 'breakpoint';
+}
+
 interface QmlVariable {
   handle: number;
   name?: string;
@@ -341,17 +350,17 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //   this.__deferredBreakpoints.delete(seq);
     // }
   }
-  tryClaimBreakpoint(bp: QmlBreakpoint) {
+  async tryClaimBreakpoint(bp: QmlBreakpoint) {
     // if (!this.acceptsBreakpoint(bp)) {
     //   return false;
     // }
     return this.requestBreakpointInsertion(bp);
   }
-  requestBreakpointInsertion(bp: QmlBreakpoint) {
+  async requestBreakpointInsertion(bp: QmlBreakpoint) {
     return this.insertBreakpoint(bp);
   }
-  insertBreakpoint(bp: QmlBreakpoint) {
-    const seq = this.setBreakpoint(
+  async insertBreakpoint(bp: QmlBreakpoint) {
+    const response = await this.setBreakpoint(
       SCRIPTREGEXP,
       bp.filename,
       true,
@@ -360,10 +369,11 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       '',
       0
     );
-    if (seq) {
-      this._breakpointsSync.set(seq, bp);
+    const breakpointId = (response as QmlSetBreakpointResponse).body.breakpoint;
+    if (breakpointId) {
+      this._breakpointsSync.set(breakpointId, bp);
     }
-    return seq;
+    return breakpointId;
   }
 
   clearBreakpoint(bp: QmlBreakpoint) {
@@ -384,7 +394,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     return this.runCommand(cmd);
   }
 
-  setBreakpoint(
+  async setBreakpoint(
     type: string,
     target: string,
     enabled: boolean,
@@ -434,8 +444,19 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       // if (ignoreCount !== 0) {
       cmd.arg(IGNORECOUNT, ignoreCount);
       // }
-      return this.runCommand(cmd);
+      const task = new Promise<unknown>((resolve) => {
+        this.runCommand(cmd, (debuggerResponse: unknown) => {
+          this.handleBacktrace(debuggerResponse, resolve);
+        });
+      });
+      return task;
     }
+  }
+  handleSetBreakpoint(response: unknown, resolve: (response: unknown) => void) {
+    void this;
+    const rsp = response as QmlSetBreakpointResponse;
+    void rsp;
+    resolve(rsp);
   }
   async backtrace(
     response: DebugProtocol.StackTraceResponse,
