@@ -110,103 +110,77 @@ export class QmlDebugSession extends LoggingDebugSession {
       if (this._qmlEngine === undefined) {
         throw new Error('QmlEngine not initialized');
       }
+      if (!args.source.path) {
+        throw new Error('Source path is not defined');
+      }
       const breakpointstoRemove: QmlBreakpoint[] = [];
       const breakpointsToAdd: QmlBreakpoint[] = [];
-      if (args.source.path) {
-        const currentBreakpoints = this._breakpoints.get(args.source.path);
-        const sourceBreakpoints = args.breakpoints ?? [];
-        // check if current breakpoints are the same as the new ones
-        for (const sourceBreakpoint of sourceBreakpoints) {
-          const found = this.findBreakpoint(
-            args.source.path,
-            sourceBreakpoint.line
+      const sourceBreakpoints = args.breakpoints ?? [];
+      // check if current breakpoints are the same as the new ones
+      for (const sourceBreakpoint of sourceBreakpoints) {
+        const found = this.findBreakpoint(
+          args.source.path,
+          sourceBreakpoint.line
+        );
+        if (!found) {
+          const newBreakpoint: QmlBreakpoint = {
+            filename: getFilename(args.source.path),
+            line: sourceBreakpoint.line,
+            state: BreakpointState.BreakpointNew
+          };
+          const currentSourceBreakpoints = this._breakpoints.get(
+            args.source.path
           );
-          if (!found) {
-            const newBreakpoint: QmlBreakpoint = {
-              filename: getFilename(args.source.path),
-              line: sourceBreakpoint.line,
-              state: BreakpointState.BreakpointNew
-            };
-            const currentSourceBreakpoints = this._breakpoints.get(
-              args.source.path
-            );
-            if (currentSourceBreakpoints) {
-              currentSourceBreakpoints.push(newBreakpoint);
-            } else {
-              this._breakpoints.set(args.source.path, [newBreakpoint]);
-            }
-            breakpointsToAdd.push(newBreakpoint);
+          if (currentSourceBreakpoints) {
+            currentSourceBreakpoints.push(newBreakpoint);
+          } else {
+            this._breakpoints.set(args.source.path, [newBreakpoint]);
           }
+          breakpointsToAdd.push(newBreakpoint);
         }
-        for (const breakpoint of currentBreakpoints ?? []) {
-          const found = sourceBreakpoints.find(
-            (sourceBreakpoint) => sourceBreakpoint.line === breakpoint.line
-          );
-          if (!found) {
-            breakpointstoRemove.push(breakpoint);
-          }
+      }
+      for (const breakpoint of this._breakpoints.get(args.source.path) ?? []) {
+        const found = sourceBreakpoints.find(
+          (sourceBreakpoint) => sourceBreakpoint.line === breakpoint.line
+        );
+        if (!found) {
+          breakpointstoRemove.push(breakpoint);
         }
+      }
 
-        // if (!args.breakpoints) {
-        //   // clear all breakpoints for this file
-        //   logger.error('No breakpoints');
-        //   return;
-        // }
-        // for (const breakpoint of args.breakpoints) {
-        //   if (!args.source.path) {
-        //     continue;
-        //   }
-        //   const existingBreakpoint = this.findBreakpoint(
-        //     args.source.path,
-        //     breakpoint.line
-        //   );
-        //   if (existingBreakpoint) {
-        //     breakpointstoRemove.push(existingBreakpoint);
-        //   } else {
-        //     const newBreakpoint: QmlBreakpoint = {
-        //       filename: getFilename(args.source.path),
-        //       line: breakpoint.line,
-        //       state: BreakpointState.BreakpointInsertionRequested
-        //     };
-        //     this._breakpoints.push(newBreakpoint);
-        //     breakpointsToAdd.push(newBreakpoint);
-        //   }
-        // }
+      // wait until debugger is ready
+      while (
+        this._qmlEngine.connectionState !== QmlDebugConnectionState.Connected
+      ) {
+        await delay(1000);
+      }
 
-        response.body = {
-          breakpoints: []
-        };
-        // wait until debugger is ready
-        while (
-          this._qmlEngine.connectionState !== QmlDebugConnectionState.Connected
-        ) {
-          await delay(1000);
+      for (const breakpoint of breakpointstoRemove) {
+        const breakpoints = this._breakpoints.get(args.source.path);
+        if (!breakpoints) {
+          continue;
         }
+        const index = breakpoints.indexOf(breakpoint);
+        breakpoints.splice(index, 1);
+        this._qmlEngine.clearBreakpoint(breakpoint);
+      }
+      for (const breakpoint of breakpointsToAdd) {
+        const breakpontId =
+          await this._qmlEngine.tryClaimBreakpoint(breakpoint);
+        if (breakpontId) {
+          breakpoint.id = breakpontId;
+        }
+      }
 
-        for (const breakpoint of breakpointstoRemove) {
-          const breakpoints = this._breakpoints.get(args.source.path);
-          if (!breakpoints) {
-            continue;
-          }
-          const index = breakpoints.indexOf(breakpoint);
-          breakpoints.splice(index, 1);
-          this._qmlEngine.clearBreakpoint(breakpoint);
-        }
-        for (const breakpoint of breakpointsToAdd) {
-          const breakpontId =
-            await this._qmlEngine.tryClaimBreakpoint(breakpoint);
-          if (breakpontId) {
-            // TODO: Use response id instead of seq
-            breakpoint.id = breakpontId;
-            // response.body.breakpoints.push({
-            //   id: seq,
-            //   line: breakpoint.line,
-            //   verified: true
-            // });
-          }
-        }
-        for (const breakpoint of this._breakpoints.get(args.source.path) ??
-          []) {
+      response.body = {
+        breakpoints: []
+      };
+      const currentBreakpoints = this._breakpoints.get(args.source.path);
+      if (currentBreakpoints) {
+        const sortedCurrentBreakpoints = currentBreakpoints.sort(
+          (a, b) => a.line - b.line
+        );
+        for (const breakpoint of sortedCurrentBreakpoints) {
           if (breakpoint.id === undefined) {
             throw new Error('Breakpoint id is undefined');
           }
@@ -217,7 +191,6 @@ export class QmlDebugSession extends LoggingDebugSession {
           });
         }
       }
-      response.success = true;
       logger.info('setBreakPointsRequest response:', JSON.stringify(response));
       this.sendResponse(response);
     } catch (err) {
