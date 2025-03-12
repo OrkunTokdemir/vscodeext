@@ -45,6 +45,8 @@ interface QmlDebugSessionAttachArguments
   host: string;
   port: number;
   paths: Record<string, string>;
+  exclude: string[] | undefined;
+  buildDirs: string[] | undefined;
 }
 
 export interface SetBreakpointResult {
@@ -343,6 +345,7 @@ export class QmlDebugSession extends LoggingDebugSession {
     number: number,
     err: string
   ) {
+    logger.error('Error:', err);
     this.sendErrorResponse(response, {
       id: number,
       format: 'QML Debug: ' + err,
@@ -394,6 +397,8 @@ export class QmlDebugSession extends LoggingDebugSession {
       this._qmlEngine.server = server;
       this._qmlEngine.start();
       this._qmlEngine.pathMappings = new Map(Object.entries(args.paths));
+      this._qmlEngine.excludePatterns = args.exclude ?? [];
+      this._qmlEngine.buildDirs = args.buildDirs ?? [];
 
       this.sendResponse(response);
       this.sendEvent(new InitializedEvent());

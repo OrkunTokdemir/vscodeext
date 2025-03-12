@@ -3,6 +3,11 @@
 
 // import * as vscode from 'vscode';
 
+import path from 'path';
+import { isEmpty } from 'lodash';
+import { DebugProtocol } from '@vscode/debugprotocol';
+import { Source, StackFrame, StoppedEvent } from '@vscode/debugadapter';
+
 import {
   QmlDebugClient,
   IQmlDebugClient,
@@ -49,10 +54,7 @@ import {
 } from '@debug/qmlv8debuggerclientconstants';
 import { Packet } from '@debug/packet';
 import { DebuggerCommand } from '@debug/debugger-command';
-import { isEmpty } from 'lodash';
-import { DebugProtocol } from '@vscode/debugprotocol';
-import { Source, StackFrame, StoppedEvent } from '@vscode/debugadapter';
-import path from 'path';
+import { FileFinder } from '@debug/file-finder';
 
 const logger = createLogger('qml-engine');
 
@@ -214,6 +216,8 @@ interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   // override _connection = new QmlDebugConnection();
   // private _previousStepAction = StepAction.Continue;
+  private _excludePatterns: string[] = [];
+  private _buildDirs: string[] = [];
   private _connectionState = QmlDebugConnectionState.Unavailable;
   private _pathMappings = new Map<string, string>();
   private readonly _callbackForToken = new Map<number, unknown>();
@@ -280,6 +284,18 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       QmlEngine.appendDebugOutput(message);
     });
   }
+  set excludePatterns(patterns: string[]) {
+    this._excludePatterns = patterns;
+  }
+  get excludePatterns() {
+    return this._excludePatterns;
+  }
+  set buildDirs(dirs: string[]) {
+    this._buildDirs = dirs;
+  }
+  get buildDirs() {
+    return this._buildDirs;
+  }
   get pathMappings() {
     return this._pathMappings;
   }
@@ -287,19 +303,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this._pathMappings = pathMappings;
   }
 
-  public mapPathFrom(filename: string): string {
-    const parsed = path.parse(path.normalize(filename));
-    for (const [virtualPath, physicalPath] of this.pathMappings) {
-      if (parsed.dir.startsWith(virtualPath)) {
-        const relativePath = parsed.dir.slice(
-          virtualPath.length,
-          parsed.dir.length
-        );
-        return physicalPath + relativePath + path.sep + parsed.base;
-      }
-    }
-    return filename;
-  }
   get connectionState() {
     return this._connectionState;
   }
@@ -481,35 +484,43 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     });
     const result = await task;
     const backtrace = (result as QmlBacktraceResponse).body;
+    const fileFinder = new FileFinder();
+    fileFinder.excludePatterns = this.excludePatterns;
+    fileFinder.buildDirs = this.buildDirs;
     response.body.totalFrames = backtrace.frames.length;
     let frameCount = 0;
-    const stackFrames = backtrace.frames
-      .filter((_value, index) => {
-        if (args.startFrame !== undefined) {
-          if (index < args.startFrame) {
-            return false;
+    const stackFrames = await Promise.all(
+      backtrace.frames
+        .filter((_value, index) => {
+          if (args.startFrame !== undefined) {
+            if (index < args.startFrame) {
+              return false;
+            }
           }
-        }
 
-        if (args.levels !== undefined) {
-          if (frameCount >= args.levels) {
-            return false;
+          if (args.levels !== undefined) {
+            if (frameCount >= args.levels) {
+              return false;
+            }
+            frameCount++;
           }
-          frameCount++;
-        }
 
-        return true;
-      })
-      .map<StackFrame>((frame) => {
-        const physicalPath = this.mapPathFrom(frame.script);
-        const parsedPath = path.parse(physicalPath);
-        return new StackFrame(
-          frame.index,
-          frame.func,
-          new Source(parsedPath.base, physicalPath),
-          frame.line + 1
-        );
-      });
+          return true;
+        })
+        .map(async (frame) => {
+          const physicalPath = await fileFinder.findFile(frame.script);
+          if (!physicalPath) {
+            throw new Error('Physical path not found: ' + frame.script);
+          }
+          const parsedPath = path.parse(physicalPath);
+          return new StackFrame(
+            frame.index,
+            frame.func,
+            new Source(parsedPath.base, physicalPath),
+            frame.line + 1
+          );
+        })
+    );
     response.body = {
       stackFrames: stackFrames
     };
