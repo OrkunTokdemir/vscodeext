@@ -38,7 +38,12 @@ export class FileFinder {
     return this.checkProjectFiles(fileUrl);
   }
   async findInQrcFiles(fileUrl: string, additionalFolders: string[] = []) {
-    const filePath = this._cache.get(fileUrl);
+    const fileUrlParts = fileUrl.split(':');
+    const fileUrlPath = fileUrlParts[1];
+    if (fileUrlParts.length !== 2 || !fileUrlPath) {
+      throw new Error('Invalid file URL');
+    }
+    const filePath = this._cache.get(fileUrlPath);
     if (filePath) {
       return filePath;
     }
@@ -50,7 +55,7 @@ export class FileFinder {
       allQrcFiles.push(...additionalQrcFiles);
     }
     // parse all qrc files asynchrounously
-    const parsePromises = allQrcFiles.map(async (file) =>
+    const parsePromises = allQrcFiles.map((file) =>
       this._qrcParser.parseQRCFile(file.fsPath)
     );
     const parsedQrcFiles = await Promise.all(parsePromises);
@@ -60,7 +65,7 @@ export class FileFinder {
         this._cache.set(alias, path);
       }
     }
-    return this._cache.get(fileUrl);
+    return this._cache.get(fileUrlPath);
   }
   async checkProjectFiles(originalPath: string) {
     // Filter .qml and .js files
