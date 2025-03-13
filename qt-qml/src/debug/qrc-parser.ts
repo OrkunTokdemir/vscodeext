@@ -85,12 +85,9 @@ export class QRCParser {
       // Filter the Map to include only .qml and .js files
       const filteredMap = new Map<string, string>();
       resourceMap.forEach((filePath, alias) => {
-        try {
-          if (filePath.endsWith('.qml') || filePath.endsWith('.js')) {
-            filteredMap.set(alias, filePath); // Only keep .qml and .js files
-          }
-        } catch (error) {
-          throw new Error(`Error filtering QRC file: ${error as string}`);
+        // Only keep .qml and .js files
+        if (filePath.endsWith('.qml') || filePath.endsWith('.js')) {
+          filteredMap.set(alias, filePath);
         }
       });
 

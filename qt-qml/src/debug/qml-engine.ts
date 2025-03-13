@@ -525,7 +525,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       stackFrames: stackFrames
     };
     response.success = true;
-    // this._session.sendResponse(response);
   }
   handleBacktrace(response: unknown, resolve: (response: unknown) => void) {
     void this;
