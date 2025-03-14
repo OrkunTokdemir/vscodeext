@@ -179,7 +179,10 @@
                 "default": "localhost"
               },
               "port": {
-                "type": "number",
+                "type": [
+                  "number",
+                  "string"
+                ],
                 "description": "Port of the target program's debug service."
               },
               "buildDirs": {
@@ -222,8 +225,7 @@
             "request": "attach",
             "name": "Attach to QML Debugger",
             "host": "localhost",
-            "port": "^\"\\${command:qt-qml.debugPort}\"",
-            "paths": []
+            "port": "^\"\\${command:qt-qml.debugPort}\""
           }
         ],
         "configurationSnippets": [
@@ -235,13 +237,7 @@
               "type": "qml",
               "request": "attach",
               "host": "localhost",
-              "port": "^\"\\${command:qt-qml.debugPort}\"",
-              "exclude": [
-                "^\"\\${workspaceFolder}/build\\\\\\*\""
-              ],
-              "paths": {
-                "qrc:/qml": "^\"\\${workspaceFolder}/<Folder that contain qml files>\""
-              }
+              "port": "^\"\\${command:qt-qml.debugPort}\""
             }
           }
         ]
@@ -294,6 +290,7 @@
     "@vscode/debugprotocol": "^1.68.0",
     "@vscode/l10n": "^0.0.16",
     "fast-xml-parser": "^5.0.8",
+    "get-port": "^7.1.0",
     "lodash": "^4.17.21",
     "module-alias": "^2.2.3",
     "promise-socket": "^8.0.0",

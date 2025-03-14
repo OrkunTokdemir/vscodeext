@@ -43,8 +43,7 @@ export enum BreakpointState {
 interface QmlDebugSessionAttachArguments
   extends DebugProtocol.AttachRequestArguments {
   host: string;
-  port: number;
-  paths: Record<string, string>;
+  port: number | string;
   exclude: string[] | undefined;
   buildDirs: string[] | undefined;
 }
@@ -92,11 +91,19 @@ export class QmlDebugSession extends LoggingDebugSession {
     args: DebugProtocol.DisconnectArguments,
     request?: DebugProtocol.Request
   ): Promise<void> {
-    logger.info('Disconnect request:');
-    this._qmlEngine?.closeConnection();
-    void args;
-    void request;
-    this.sendResponse(response);
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QmlEngine not initialized');
+      }
+      logger.info('Disconnect request:');
+      this._qmlEngine.closeConnection();
+      this._qmlEngine.notifyInferiorExited();
+      void args;
+      void request;
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
   }
   // Since it is a an external api, we can't change the signature
   // Disable eslint rule
@@ -370,20 +377,17 @@ export class QmlDebugSession extends LoggingDebugSession {
     args: QmlDebugSessionAttachArguments,
     request?: DebugProtocol.Request
   ) {
-    // logger.info('response:', response.toString());
-    void request;
-    logger.info(
-      'Attach request:',
-      args.host,
-      args.port.toString(),
-      JSON.stringify(Object.fromEntries(Object.entries(args.paths)))
-    );
-    const server: Server = {
-      host: args.host,
-      port: args.port,
-      scheme: ServerScheme.Tcp
-    };
     try {
+      void request;
+      logger.info('Attach request:', args.host, args.port.toString());
+      if (typeof args.port === 'string') {
+        args.port = parseInt(args.port, 10);
+      }
+      const server: Server = {
+        host: args.host,
+        port: args.port,
+        scheme: ServerScheme.Tcp
+      };
       // this._QmlDebugConnectionManager = new QmlDebugConnectionManager();
       // this._QmlDebugConnectionManager.connectToServer(server);
 
@@ -396,7 +400,6 @@ export class QmlDebugSession extends LoggingDebugSession {
       this._qmlEngine = new QmlEngine(this);
       this._qmlEngine.server = server;
       this._qmlEngine.start();
-      this._qmlEngine.pathMappings = new Map(Object.entries(args.paths));
       this._qmlEngine.excludePatterns = args.exclude ?? [];
       this._qmlEngine.buildDirs = args.buildDirs ?? [];
 

@@ -49,9 +49,8 @@ export class FileFinder {
     }
     const allQrcFiles = await vscode.workspace.findFiles('**/*.qrc');
     for (const folder of additionalFolders) {
-      const additionalQrcFiles = await vscode.workspace.findFiles(
-        `${folder}/**/*.qrc`
-      );
+      const pattern = new vscode.RelativePattern(folder, '**/*.qrc');
+      const additionalQrcFiles = await vscode.workspace.findFiles(pattern);
       allQrcFiles.push(...additionalQrcFiles);
     }
     // parse all qrc files asynchrounously

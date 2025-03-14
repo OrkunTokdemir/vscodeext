@@ -15,6 +15,7 @@ import {
 import { registerColorProvider } from '@/color-provider';
 import { registerRestartQmllsCommand } from '@cmd/restart-qmlls';
 import { registerDownloadQmllsCommand } from '@cmd/download-qmlls';
+import { registerDebugPort } from '@cmd/debug';
 import { registerCheckQmllsUpdateCommand } from '@cmd/check-qmlls-update';
 import { getDoNotAskForDownloadingQmlls, Qmlls, QmllsStatus } from '@/qmlls';
 import { EXTENSION_ID } from '@/constants';
@@ -56,6 +57,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
+    registerDebugPort(),
     registerRestartQmllsCommand(),
     registerCheckQmllsUpdateCommand(),
     registerDownloadQmllsCommand(),

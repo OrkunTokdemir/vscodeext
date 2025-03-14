@@ -55,6 +55,7 @@ import {
 import { Packet } from '@debug/packet';
 import { DebuggerCommand } from '@debug/debugger-command';
 import { FileFinder } from '@debug/file-finder';
+import { QmlEngineUI } from '@debug/ui';
 
 const logger = createLogger('qml-engine');
 
@@ -216,10 +217,10 @@ interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   // override _connection = new QmlDebugConnection();
   // private _previousStepAction = StepAction.Continue;
+  private readonly _ui: QmlEngineUI;
   private _excludePatterns: string[] = [];
   private _buildDirs: string[] = [];
   private _connectionState = QmlDebugConnectionState.Unavailable;
-  private _pathMappings = new Map<string, string>();
   private readonly _callbackForToken = new Map<number, unknown>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   // private readonly __deferredBreakpoints = new Map<number, QmlBreakpoint>();
@@ -241,6 +242,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   private readonly _connectionTimer: Timer = new Timer();
   constructor(session: QmlDebugSession) {
     super('V8Debugger', new QmlDebugConnection());
+    this._ui = new QmlEngineUI();
     this._session = session;
     // connect(connection, &QmlDebugConnection::connectionFailed,
     //   this, &QmlEngine::connectionFailed);
@@ -295,12 +297,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   }
   get buildDirs() {
     return this._buildDirs;
-  }
-  get pathMappings() {
-    return this._pathMappings;
-  }
-  set pathMappings(pathMappings: Map<string, string>) {
-    this._pathMappings = pathMappings;
   }
 
   get connectionState() {
@@ -802,6 +798,8 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   }
   notifyEngineRunAndInferiorRunOk() {
     logger.info('NOTE: ENGINE RUN AND INFERIOR RUN OK');
+    this._ui.removeWaitingForDebugger();
+    this._ui.showSuccesfullAttach();
     this.setState(DebuggerState.InferiorRunOk);
   }
   disconnected() {
@@ -819,6 +817,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     // d->doShutdownEngine();
     logger.info('NOTE: INFERIOR EXITED');
     this.setState(DebuggerState.InferiorShutdownFinished);
+    this._ui.removeWaitingForDebugger();
     this.doShutdownEngine();
   }
   connectionFailed() {
@@ -878,6 +877,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     if (this.state !== DebuggerState.EngineRunRequested) {
       throw new Error('Unexpected state:' + this.state);
     }
+    void this._ui.showWaitingForDebugger();
     if (this._startMode === DebuggerStartMode.AttachToQmlServer) {
       this.tryToConnect();
     }
