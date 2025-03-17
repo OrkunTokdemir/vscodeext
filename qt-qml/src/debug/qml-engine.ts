@@ -1,8 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
-// import * as vscode from 'vscode';
-
 import path from 'path';
 import { isEmpty } from 'lodash';
 import { DebugProtocol } from '@vscode/debugprotocol';
@@ -215,15 +213,12 @@ interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
 }
 
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
-  // override _connection = new QmlDebugConnection();
-  // private _previousStepAction = StepAction.Continue;
-  private readonly _ui: QmlEngineUI;
+  private readonly _ui: QmlEngineUI | undefined;
   private _excludePatterns: string[] = [];
   private _buildDirs: string[] = [];
   private _connectionState = QmlDebugConnectionState.Unavailable;
   private readonly _callbackForToken = new Map<number, unknown>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
-  // private readonly __deferredBreakpoints = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
   readonly mainQmlThreadId = 1;
   private _sendBuffer: Packet[] = [];
@@ -233,9 +228,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     DebuggerStartMode.AttachToQmlServer;
   private _server: Server | undefined;
   private _isDying = false;
-  // private readonly _breakpointsSync = new Map<number, vscode.Breakpoint>();
   private _state = DebuggerState.DebuggerNotReady;
-  // private _dbEngine: DebuggerEngine = new DebuggerEngine();
   private _retryOnConnectFail = false;
   private _automaticConnect = false;
   private readonly _session: QmlDebugSession;
@@ -244,18 +237,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     super('V8Debugger', new QmlDebugConnection());
     this._ui = new QmlEngineUI();
     this._session = session;
-    // connect(connection, &QmlDebugConnection::connectionFailed,
-    //   this, &QmlEngine::connectionFailed);
-    // connect(connection, &QmlDebugConnection::connected,
-    //       &d->connectionTimer, &QTimer::stop);
-    // connect(connection, &QmlDebugConnection::connected,
-    //       this, &QmlEngine::connectionEstablished);
-    // connect(connection, &QmlDebugConnection::disconnected,
-    //       this, &QmlEngine::disconnected);
-    // d->connectionTimer.setInterval(4000);
-    // d->connectionTimer.setSingleShot(true);
-    // connect(&d->connectionTimer, &QTimer::timeout,
-    //         this, &QmlEngine::checkConnectionState);
     this._connectionTimer.setInterval(4000);
     this._connectionTimer.setSingleShot(true);
     this._connectionTimer.onTimeout(() => {
@@ -286,6 +267,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       QmlEngine.appendDebugOutput(message);
     });
   }
+  get ui() {
+    if (!this._ui) {
+      throw new Error('UI is not set');
+    }
+    return this._ui;
+  }
   set excludePatterns(patterns: string[]) {
     this._excludePatterns = patterns;
   }
@@ -304,14 +291,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   }
   override stateChanged(state: QmlDebugConnectionState): void {
     this._connectionState = state;
-    // engine->logServiceStateChange(name(), serviceVersion(), state);
     logger.info(
       this.name,
       this.serviceVersion() as unknown as string,
       QmlDebugConnectionState[state]
     );
     if (state === QmlDebugConnectionState.Enabled) {
-      // this.claimBreakpointsForEngine();
       const cb = () => {
         void this.flushSendBuffer();
         const jsonParameters = {
@@ -342,17 +327,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this.runDirectCommand(V8REQUEST, msg.data);
     return this._sequence;
   }
-  claimBreakpointsForEngine() {
-    void this;
-    // for (const [seq, bp] of this.__deferredBreakpoints) {
-    //   this.tryClaimBreakpoint(bp);
-    //   this.__deferredBreakpoints.delete(seq);
-    // }
-  }
   async tryClaimBreakpoint(bp: QmlBreakpoint) {
-    // if (!this.acceptsBreakpoint(bp)) {
-    //   return false;
-    // }
     return this.requestBreakpointInsertion(bp);
   }
   async requestBreakpointInsertion(bp: QmlBreakpoint) {
@@ -382,13 +357,11 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //      "arguments" : { "breakpoint" : <number of the break point to clear>
     //                    }
     //    }
-
     if (bp.id === undefined) {
       throw new Error('Breakpoint id is not set');
     }
 
     const cmd = new DebuggerCommand(CLEARBREAKPOINT);
-    // TODO: Use response id instead of seq
     cmd.arg(BREAKPOINT, bp.id);
     return this.runCommand(cmd);
   }
@@ -440,9 +413,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       if (!isEmpty(condition)) {
         cmd.arg(CONDITION, condition);
       }
-      // if (ignoreCount !== 0) {
       cmd.arg(IGNORECOUNT, ignoreCount);
-      // }
       const task = new Promise<unknown>((resolve) => {
         this.runCommand(cmd, (debuggerResponse: unknown) => {
           this.handleBacktrace(debuggerResponse, resolve);
@@ -538,13 +509,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     logger.info('Received message:', type);
     if (type == CONNECT) {
       this.stateChanged(QmlDebugConnectionState.Connected);
-      //debugging session started
       logger.info(`${V8DEBUG} debugging session started`);
     } else if (type == INTERRUPT) {
-      //debug break requested
       logger.info('Debug break requested');
     } else if (type == BREAKONSIGNAL) {
-      //break on signal handler requested
       logger.info('Break on signal handler requested');
     } else if (type == V8MESSAGE) {
       logger.info('V8 message received');
@@ -568,8 +536,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     } else if (action === StepAction.Next) {
       cmd.arg(STEPACTION, NEXT);
     }
-
-    // this._previousStepAction = action;
 
     const task = new Promise<unknown>((resolve) => {
       this.runCommand(cmd, (debuggerResponse: unknown) => {
@@ -609,12 +575,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       logger.info('Request sequence:', seq as unknown as string);
       if (debugCommand === DISCONNECT) {
         logger.info('Debugging session ended');
-        //debugging session ended
       } else if (debugCommand === CONTINEDEBUGGING) {
         logger.info('Continue debugging');
       } else if (debugCommand === CLEARBREAKPOINT) {
         logger.info('Clear breakpoint');
-        //do nothing, wait for next break
       } else if (debugCommand === SETBREAKPOINT) {
         //                { "seq"         : <number>,
         //                  "type"        : "response",
@@ -632,8 +596,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         if (this._breakpointsSync.has(seq)) {
           const bp = this._breakpointsSync.get(seq);
           this._breakpointsSync.delete(seq);
-          // bp->setParameters(bp->requestedParameters()); // Assume it worked.
-          // bp->setResponseId(index);
           const actualLocations = body.actual_locations;
           if (actualLocations) {
             //The breakpoint requested line should be same as actual line
@@ -652,7 +614,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       const response = message as IQmlEvent;
       const eventType = response.event;
       if (eventType === 'break') {
-        //break event
         logger.info('Break event');
         // clearRefs();
         const breakData = response.body;
@@ -664,17 +625,9 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         logger.info('scriptUrl:', scriptUrl);
         logger.info('sourceLineText:', sourceLineText);
         logger.info('v8BreakpointIdList:', v8BreakpointIdList.join(','));
-        // const v8Breakpoints: QmlBreakpoint[] = [];
-        // v8BreakpointIdList.forEach((v8BreakpointId) => {
-        //   const ret = this._breakpointsSync.get(v8BreakpointId);
-        //   if (ret) {
-        //     v8Breakpoints.push(ret);
-        //   }
-        // });
-        // const inferiorStop = true;
-        // if (inferiorStop) {
+
         if (this.state === DebuggerState.InferiorRunOk) {
-          this.notifyInferiorSpontaneousStop(v8BreakpointIdList);
+          this.notifyInferiorSpontaneousStop(breakData);
         }
       }
     }
@@ -683,16 +636,22 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this.setState(DebuggerState.InferiorRunOk);
   }
 
-  notifyInferiorSpontaneousStop(breakpointIds: number[]) {
+  notifyInferiorSpontaneousStop(breakData: IResponseBodyBreak) {
     logger.info('NOTE: INFERIOR SPONTANEOUS STOP');
     this.setState(DebuggerState.InferiorStopOk);
     const stoppedEvent: DebugProtocol.StoppedEvent = new StoppedEvent(
       'breakpoint',
       this.mainQmlThreadId
     );
-    stoppedEvent.body.hitBreakpointIds = breakpointIds;
-    stoppedEvent.body.description = 'Test 1';
-    // print stoppedEvent
+    const breakpointIds = breakData.breakpoints;
+    const description: string[] = [];
+    description.push(breakData.script.name);
+    description.push(breakData.sourceLineText);
+    description.push(breakData.invocationText);
+    description.push(breakData.breakpoints.join(','));
+    stoppedEvent.body.description = description.join(':');
+    stoppedEvent.body.hitBreakpointIds = breakData.breakpoints;
+
     logger.info('Stopped event: breakpointIds: ', breakpointIds.join(','));
     this._session.sendEvent(stoppedEvent);
   }
@@ -781,11 +740,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
   }
   closeConnection() {
-    // d->automaticConnect = false;
-    // d->retryOnConnectFail = false;
-    // d->connectionTimer.stop();
-    // if (QmlDebugConnection *connection = d->connection())
-    //     connection->close();
     this._automaticConnect = false;
     this._retryOnConnectFail = false;
     this._connectionTimer.stop();
@@ -798,15 +752,14 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   }
   notifyEngineRunAndInferiorRunOk() {
     logger.info('NOTE: ENGINE RUN AND INFERIOR RUN OK');
-    this._ui.removeWaitingForDebugger();
-    this._ui.showSuccesfullAttach();
+    this.ui.removeWaitingForDebugger();
+    this.ui.showSuccesfullAttach();
     this.setState(DebuggerState.InferiorRunOk);
   }
   disconnected() {
     if (this._isDying) {
       return;
     }
-    // showMessage(Tr::tr("QML Debugger disconnected."), StatusBar);
     logger.info('QML Debugger disconnected.');
     this.notifyInferiorExited();
   }
@@ -817,7 +770,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     // d->doShutdownEngine();
     logger.info('NOTE: INFERIOR EXITED');
     this.setState(DebuggerState.InferiorShutdownFinished);
-    this._ui.removeWaitingForDebugger();
+    this.ui.removeWaitingForDebugger();
     this.doShutdownEngine();
   }
   connectionFailed() {
@@ -845,7 +798,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     if (this._retryOnConnectFail) {
       // retry after 3 seconds ...
-      // QTimer::singleShot(3000, this, [this] { beginConnection(); });
       Timer.singleShot(3000, () => {
         logger.info('Retrying connection ...');
         this.beginConnection();
@@ -868,16 +820,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   setupEngine() {
     this.notifyEngineSetupOk();
 
-    // TODO: Need this?
-    // // we won't get any debug output
-    // if (!usesTerminal()) {
-    //   d->retryOnConnectFail = true;
-    //   d->automaticConnect = true;
-    // }
     if (this.state !== DebuggerState.EngineRunRequested) {
       throw new Error('Unexpected state:' + this.state);
     }
-    void this._ui.showWaitingForDebugger();
+    void this.ui.showWaitingForDebugger();
     if (this._startMode === DebuggerStartMode.AttachToQmlServer) {
       this.tryToConnect();
     }
@@ -886,8 +832,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
   }
   start() {
-    // d->m_watchHandler.resetWatchers();
-    // d->setInitialActionStates();
     this.setState(DebuggerState.EngineSetupRequested);
     logger.info('CALL: SETUP ENGINE');
     this.setupEngine();
@@ -933,7 +877,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     logger.error(
       'Could not connect to the in-process QML debugger. ' + errorMessage
     );
-    // TODO: Show user an info message
+    this.ui.showError(errorMessage);
     this.notifyEngineRunFailed();
   }
   notifyEngineRunFailed() {
@@ -951,37 +895,14 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this._isDying = true;
   }
   shutdownEngine() {
-    //   clearExceptionSelection();
-
-    //   debuggerConsole()->setScriptEvaluator(ScriptEvaluator());
-
-    //  // double check (ill engine?):
-    //   stopProcess();
     this.notifyEngineShutdownFinished();
   }
   notifyEngineShutdownFinished() {
-    // showMessage("NOTE: ENGINE SHUTDOWN FINISHED");
-    // QTC_ASSERT(state() == EngineShutdownRequested, qDebug() << this << state());
-    // setState(EngineShutdownFinished);
-    // d->doFinishDebugger();
     logger.info('NOTE: ENGINE SHUTDOWN FINISHED');
     this.setState(DebuggerState.EngineShutdownFinished);
     this.doFinishDebugger();
   }
   doFinishDebugger() {
-    // TODO: Nees the below code?
-    // QTC_ASSERT(m_state == EngineShutdownFinished, qDebug() << m_state);
-    // resetLocation();
-    // m_progress.setProgressValue(1000);
-    // m_progress.reportFinished();
-    // m_modulesHandler.removeAll();
-    // m_stackHandler.removeAll();
-    // m_threadsHandler.removeAll();
-    // m_watchHandler.cleanup();
-    // m_engine->showMessage(Tr::tr("Debugger finished."), StatusBar);
-    // m_engine->setState(DebuggerFinished); // Also destroys views.
-    // if (settings().switchModeOnExit())
-    //     EngineManager::deactivateDebugMode();
     this.setState(DebuggerState.DebuggerFinished);
   }
   notifyEngineSetupOk() {

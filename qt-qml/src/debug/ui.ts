@@ -6,9 +6,7 @@ import * as vscode from 'vscode';
 export class QmlEngineUI {
   private progressResolve: (() => void) | undefined;
   showSuccesfullAttach() {
-    if (this.progressResolve) {
-      this.removeWaitingForDebugger();
-    }
+    this.removeWaitingForDebugger();
     void vscode.window.showInformationMessage(
       'QML Debugger attached successfully'
     );
@@ -33,5 +31,9 @@ export class QmlEngineUI {
       this.progressResolve();
       this.progressResolve = undefined;
     }
+  }
+  showError(message: string) {
+    this.removeWaitingForDebugger();
+    void vscode.window.showErrorMessage(message);
   }
 }

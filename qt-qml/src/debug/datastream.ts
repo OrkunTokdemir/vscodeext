@@ -310,9 +310,6 @@ export class DataStream {
       while (newSize < capacity) {
         newSize *= increaseFactor;
       }
-      console.log(
-        `Resizing buffer from ${this._data.byteLength} to ${newSize}`
-      );
       this.resize(newSize);
     }
   }
