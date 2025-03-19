@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
+import { Mutex } from 'async-mutex';
+
 import { createLogger, delay, getFilename } from 'qt-lib';
 import {
   QmlDebugConnectionState,
@@ -54,6 +56,7 @@ export interface QmlBreakpoint {
 }
 
 export class QmlDebugSession extends LoggingDebugSession {
+  private readonly _mutex = new Mutex();
   private _qmlEngine: QmlEngine | undefined;
   private readonly _breakpoints = new Map<string, QmlBreakpoint[]>();
   public constructor(session: vscode.DebugSession) {
@@ -100,6 +103,9 @@ export class QmlDebugSession extends LoggingDebugSession {
     _request?: DebugProtocol.Request
   ): Promise<void> {
     try {
+      await this.waitUntilDebuggerIsReady();
+      await this._mutex.waitForUnlock();
+      const release = await this._mutex.acquire();
       logger.info('Func: setBreakPointsRequest: Begin');
       if (this._qmlEngine === undefined) {
         throw new Error('QmlEngine not initialized');
@@ -142,13 +148,6 @@ export class QmlDebugSession extends LoggingDebugSession {
         }
       }
 
-      // wait until debugger is ready
-      while (
-        this._qmlEngine.connectionState !== QmlDebugConnectionState.Connected
-      ) {
-        await delay(1000);
-      }
-
       for (const breakpoint of breakpointstoRemove) {
         const breakpoints = this._breakpoints.get(args.source.path);
         if (!breakpoints) {
@@ -160,6 +159,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       }
 
       for (const breakpoint of breakpointsToAdd) {
+        breakpoint.state = BreakpointState.BreakpointInsertionRequested;
         const breakpontId =
           await this._qmlEngine.tryClaimBreakpoint(breakpoint);
         if (breakpontId) {
@@ -179,6 +179,11 @@ export class QmlDebugSession extends LoggingDebugSession {
           (a, b) => a.line - b.line
         );
         for (const breakpoint of sortedCurrentBreakpoints) {
+          if (
+            breakpoint.state === BreakpointState.BreakpointInsertionRequested
+          ) {
+            continue;
+          }
           if (breakpoint.id === undefined) {
             throw new Error('Breakpoint id is undefined');
           }
@@ -191,8 +196,20 @@ export class QmlDebugSession extends LoggingDebugSession {
       }
       logger.info('setBreakPointsRequest response:', JSON.stringify(response));
       this.sendResponse(response);
+      release();
     } catch (err) {
       this.sendError(response, 1, err as string);
+    }
+  }
+  async waitUntilDebuggerIsReady() {
+    if (!this._qmlEngine) {
+      throw new Error('QmlEngine not initialized');
+    }
+    // wait until debugger is ready
+    while (
+      this._qmlEngine.connectionState !== QmlDebugConnectionState.Connected
+    ) {
+      await delay(1000);
     }
   }
   protected override initializeRequest(
