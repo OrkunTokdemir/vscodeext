@@ -5,8 +5,6 @@ import * as vscode from 'vscode';
 import { createLogger, delay, getFilename } from 'qt-lib';
 import {
   QmlDebugConnectionState,
-  // DebugMessageClient,
-  // QmlDebugConnectionManager,
   Server,
   ServerScheme
 } from '@debug/debug-connection';
@@ -17,7 +15,7 @@ import {
   Thread
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { QmlContinueResponse, QmlEngine, StepAction } from '@debug/qml-engine';
+import { QmlEngine, StepAction } from '@debug/qml-engine';
 
 const logger = createLogger('project');
 
@@ -48,14 +46,6 @@ interface QmlDebugSessionAttachArguments
   buildDirs: string[] | undefined;
 }
 
-export interface SetBreakpointResult {
-  // type : "response";
-  request_seq: number;
-  // command : string;
-  success: boolean;
-  // running : boolean;
-}
-
 export interface QmlBreakpoint {
   id?: number;
   filename: string;
@@ -64,8 +54,6 @@ export interface QmlBreakpoint {
 }
 
 export class QmlDebugSession extends LoggingDebugSession {
-  // private _debugMessageClient: DebugMessageClient | undefined;
-  // private _QmlDebugConnectionManager: QmlDebugConnectionManager | undefined;
   private _qmlEngine: QmlEngine | undefined;
   private readonly _breakpoints = new Map<string, QmlBreakpoint[]>();
   public constructor(session: vscode.DebugSession) {
@@ -88,8 +76,10 @@ export class QmlDebugSession extends LoggingDebugSession {
   // eslint-disable-next-line @typescript-eslint/require-await
   protected override async disconnectRequest(
     response: DebugProtocol.DisconnectResponse,
-    args: DebugProtocol.DisconnectArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _args: DebugProtocol.DisconnectArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ): Promise<void> {
     try {
       if (!this._qmlEngine) {
@@ -98,24 +88,19 @@ export class QmlDebugSession extends LoggingDebugSession {
       logger.info('Disconnect request:');
       this._qmlEngine.closeConnection();
       this._qmlEngine.notifyInferiorExited();
-      void args;
-      void request;
       this.sendResponse(response);
     } catch (err) {
       this.sendError(response, 1, err as string);
     }
   }
-  // Since it is a an external api, we can't change the signature
-  // Disable eslint rule
-  // eslint-disable-next-line @typescript-eslint/require-await
   protected override async setBreakPointsRequest(
     response: DebugProtocol.SetBreakpointsResponse,
     args: DebugProtocol.SetBreakpointsArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ): Promise<void> {
     try {
       logger.info('Func: setBreakPointsRequest: Begin');
-      void request;
       if (this._qmlEngine === undefined) {
         throw new Error('QmlEngine not initialized');
       }
@@ -173,11 +158,13 @@ export class QmlDebugSession extends LoggingDebugSession {
         breakpoints.splice(index, 1);
         this._qmlEngine.clearBreakpoint(breakpoint);
       }
+
       for (const breakpoint of breakpointsToAdd) {
         const breakpontId =
           await this._qmlEngine.tryClaimBreakpoint(breakpoint);
         if (breakpontId) {
           breakpoint.id = breakpontId;
+          breakpoint.state = BreakpointState.BreakpointInserted;
         }
       }
 
@@ -186,6 +173,8 @@ export class QmlDebugSession extends LoggingDebugSession {
       };
       const currentBreakpoints = this._breakpoints.get(args.source.path);
       if (currentBreakpoints) {
+        // We have to sort the breakpoints by line number. Otherwise, an
+        // undefined behavior can occur.
         const sortedCurrentBreakpoints = currentBreakpoints.sort(
           (a, b) => a.line - b.line
         );
@@ -214,23 +203,12 @@ export class QmlDebugSession extends LoggingDebugSession {
     response.body = {};
     this.sendResponse(response);
   }
-  protected override setFunctionBreakPointsRequest(
-    response: DebugProtocol.SetFunctionBreakpointsResponse,
-    args: DebugProtocol.SetFunctionBreakpointsArguments,
-    request?: DebugProtocol.Request
-  ): void {
-    logger.info('Function breakpoints:');
-    void this;
-    void response;
-    void args;
-    void request;
-  }
   protected override threadsRequest(
     response: DebugProtocol.ThreadsResponse,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ) {
     logger.info('threadsRequest:');
-    void request;
     if (!this._qmlEngine) {
       throw new Error('QmlEngine not initialized');
     }
@@ -242,18 +220,20 @@ export class QmlDebugSession extends LoggingDebugSession {
   protected override async stackTraceRequest(
     response: DebugProtocol.StackTraceResponse,
     args: DebugProtocol.StackTraceArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ) {
-    void request;
     try {
       if (!this._qmlEngine) {
         throw new Error('QmlEngine not initialized');
       }
       logger.info('stackTraceRequest:', JSON.stringify(args));
+      const { stackFrames, length } = await this._qmlEngine.backtrace(args);
       response.body = {
-        stackFrames: []
+        stackFrames: stackFrames
       };
-      await this._qmlEngine.backtrace(response, args);
+      response.body.totalFrames = length;
+      response.success = true;
       this.sendResponse(response);
     } catch (err) {
       this.sendError(response, 1, err as string);
@@ -261,18 +241,18 @@ export class QmlDebugSession extends LoggingDebugSession {
   }
   protected override async continueRequest(
     response: DebugProtocol.ContinueResponse,
-    args: DebugProtocol.ContinueArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _args: DebugProtocol.ContinueArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ) {
     try {
       if (!this._qmlEngine) {
         throw new Error('QmlEngine not initialized');
       }
-      void request;
-      void args;
-      const result = (await this._qmlEngine.continueDebugging(
+      const result = await this._qmlEngine.continueDebugging(
         StepAction.Continue
-      )) as QmlContinueResponse;
+      );
       if (!result.success) {
         response.success = false;
       }
@@ -283,18 +263,16 @@ export class QmlDebugSession extends LoggingDebugSession {
   }
   protected override async stepInRequest(
     response: DebugProtocol.StepInResponse,
-    args: DebugProtocol.StepInArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _args: DebugProtocol.StepInArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ) {
     try {
       if (!this._qmlEngine) {
         throw new Error('QmlEngine not initialized');
       }
-      void request;
-      void args;
-      const result = (await this._qmlEngine.continueDebugging(
-        StepAction.StepIn
-      )) as QmlContinueResponse;
+      const result = await this._qmlEngine.continueDebugging(StepAction.StepIn);
       if (!result.success) {
         response.success = false;
       }
@@ -305,18 +283,18 @@ export class QmlDebugSession extends LoggingDebugSession {
   }
   protected override async stepOutRequest(
     response: DebugProtocol.StepOutResponse,
-    args: DebugProtocol.StepOutArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _args: DebugProtocol.StepOutArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ) {
     try {
       if (!this._qmlEngine) {
         throw new Error('QmlEngine not initialized');
       }
-      void request;
-      void args;
-      const result = (await this._qmlEngine.continueDebugging(
+      const result = await this._qmlEngine.continueDebugging(
         StepAction.StepOut
-      )) as QmlContinueResponse;
+      );
       if (!result.success) {
         response.success = false;
       }
@@ -327,18 +305,17 @@ export class QmlDebugSession extends LoggingDebugSession {
   }
   protected override async nextRequest(
     response: DebugProtocol.NextResponse,
-    args: DebugProtocol.NextArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _args: DebugProtocol.NextArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ) {
     try {
       if (!this._qmlEngine) {
         throw new Error('QmlEngine not initialized');
       }
-      void request;
-      void args;
-      const result = (await this._qmlEngine.continueDebugging(
-        StepAction.Next
-      )) as QmlContinueResponse;
+
+      const result = await this._qmlEngine.continueDebugging(StepAction.Next);
       if (!result.success) {
         response.success = false;
       }
@@ -361,24 +338,13 @@ export class QmlDebugSession extends LoggingDebugSession {
     this.sendEvent(new TerminatedEvent());
   }
 
-  protected override setExceptionBreakPointsRequest(
-    response: DebugProtocol.SetExceptionBreakpointsResponse,
-    args: DebugProtocol.SetExceptionBreakpointsArguments,
-    request?: DebugProtocol.Request
-  ): void {
-    logger.info('Exception breakpoints:');
-    void this;
-    void response;
-    void args;
-    void request;
-  }
   protected override attachRequest(
     response: DebugProtocol.AttachResponse,
     args: QmlDebugSessionAttachArguments,
-    request?: DebugProtocol.Request
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
   ) {
     try {
-      void request;
       logger.info('Attach request:', args.host, args.port.toString());
       if (typeof args.port === 'string') {
         args.port = parseInt(args.port, 10);
@@ -388,15 +354,6 @@ export class QmlDebugSession extends LoggingDebugSession {
         port: args.port,
         scheme: ServerScheme.Tcp
       };
-      // this._QmlDebugConnectionManager = new QmlDebugConnectionManager();
-      // this._QmlDebugConnectionManager.connectToServer(server);
-
-      // const connection = this._QmlDebugConnectionManager.connection;
-      // if (!connection) {
-      //   throw new Error('Connection is not established');
-      // }
-      // this._debugMessageClient = new DebugMessageClient(connection);
-      // void this._debugMessageClient;
       this._qmlEngine = new QmlEngine(this);
       this._qmlEngine.server = server;
       this._qmlEngine.start();

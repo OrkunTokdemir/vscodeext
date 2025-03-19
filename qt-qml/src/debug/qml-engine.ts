@@ -113,46 +113,22 @@ export enum StepAction {
   Next
 }
 
-interface IQmlMessage {
+interface QmlMessage {
   type: string;
   seq: number;
 }
 
-interface IQmlResponse extends IQmlMessage {
-  request_seq: number;
-  command: string;
-  success: boolean;
-  running: boolean;
-  body: IResponseBodySetBreakpoint;
-}
-
-interface IQmlEvent extends IQmlMessage {
+interface IQmlEvent extends QmlMessage {
   event: string;
   body: IResponseBodyBreak;
-}
-
-interface IResponseBodySetBreakpoint {
-  type: string;
-  breakpoint: number;
-  line?: number;
-  actual_locations?: number[];
 }
 
 interface IResponseBodyBreak {
   invocationText: string;
   sourceLineText: string;
-  script: IScript;
+  script: string;
   breakpoints: number[];
   sourceLine: number;
-}
-
-interface IScript {
-  name: string;
-}
-
-interface QmlMessage {
-  type: 'request' | 'event' | 'response';
-  seq: number;
 }
 
 interface QmlResponse<QmlResponseBody> extends QmlMessage {
@@ -164,12 +140,28 @@ interface QmlResponse<QmlResponseBody> extends QmlMessage {
   body: QmlResponseBody;
 }
 
-interface QmlBreakpointResponse {
-  breakpoint: number;
+// interface IQmlResponse extends IQmlMessage {
+//   request_seq: number;
+//   command: string;
+//   success: boolean;
+//   running: boolean;
+//   body: IResponseBodySetBreakpoint;
+// }
+
+// interface QmlBreakpointResponse {
+//   breakpoint: number;
+//   type: string;
+// }
+
+interface QmlResponseBodySetBreakpoint {
   type: string;
+  breakpoint: number;
+  line?: number;
+  actual_locations?: number[];
 }
 
-interface QmlSetBreakpointResponse extends QmlResponse<QmlBreakpointResponse> {
+interface QmlSetBreakpointResponse
+  extends QmlResponse<QmlResponseBodySetBreakpoint> {
   command: 'breakpoint';
 }
 
@@ -212,12 +204,18 @@ interface QmlBacktraceResponse extends QmlResponse<QmlBacktrace> {
   command: 'backtrace';
 }
 
+// type QmlResponseMessage = QmlSetBreakpointResponse | QmlContinueResponse | QmlBacktraceResponse;
+
 export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   private readonly _ui: QmlEngineUI | undefined;
   private _excludePatterns: string[] = [];
   private _buildDirs: string[] = [];
   private _connectionState = QmlDebugConnectionState.Unavailable;
-  private readonly _callbackForToken = new Map<number, unknown>();
+  private readonly _callbackForToken = new Map<
+    number,
+    // (response: T QmlMessage) => void
+    unknown
+  >();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
   readonly mainQmlThreadId = 1;
@@ -311,7 +309,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       Timer.singleShot(0, cb);
     }
   }
-  runCommand(command: DebuggerCommand, cb: unknown = undefined) {
+  runCommand<T>(command: DebuggerCommand, cb?: (response: T) => void) {
     ++this._sequence;
     const object = {
       type: 'request',
@@ -343,7 +341,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       '',
       0
     );
-    const breakpointId = (response as QmlSetBreakpointResponse).body.breakpoint;
+    const breakpointId = response.body.breakpoint;
     if (breakpointId) {
       this._breakpointsSync.set(breakpointId, bp);
     }
@@ -357,6 +355,9 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //      "arguments" : { "breakpoint" : <number of the break point to clear>
     //                    }
     //    }
+    if (bp.state !== BreakpointState.BreakpointInserted) {
+      return undefined;
+    }
     if (bp.id === undefined) {
       throw new Error('Breakpoint id is not set');
     }
@@ -387,51 +388,49 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //                      "ignoreCount" : <number specifying the number of break point hits to ignore, default value is 0>
     //                    }
     //    }
-    if (type === EVENT) {
-      // TODO: Do we need EVENT?
-      const rs = new Packet();
-      rs.writeStringUTF8(target);
-      rs.writeBoolean(enabled);
-      this.runDirectCommand(BREAKONSIGNAL, rs.data);
-      return undefined;
+
+    // TODO: Do we need EVENT?
+    // if (type === EVENT) {
+    //   const rs = new Packet();
+    //   rs.writeStringUTF8(target);
+    //   rs.writeBoolean(enabled);
+    //   this.runDirectCommand(BREAKONSIGNAL, rs.data);
+    //   return undefined;
+    // } else {
+
+    const cmd = new DebuggerCommand(SETBREAKPOINT);
+    cmd.arg(TYPE, type);
+    cmd.arg(ENABLED, enabled);
+    if (type === SCRIPTREGEXP) {
+      // TODO: Use target file instead here
+      cmd.arg(TARGET, target);
     } else {
-      const cmd = new DebuggerCommand(SETBREAKPOINT);
-      cmd.arg(TYPE, type);
-      cmd.arg(ENABLED, enabled);
-      if (type === SCRIPTREGEXP) {
-        // TODO: Use target file instead here
-        cmd.arg(TARGET, target);
-      } else {
-        cmd.arg(TARGET, target);
-      }
-      if (line) {
-        cmd.arg(LINE, line - 1);
-      }
-      if (column) {
-        cmd.arg(COLUMN, column - 1);
-      }
-      if (!isEmpty(condition)) {
-        cmd.arg(CONDITION, condition);
-      }
-      cmd.arg(IGNORECOUNT, ignoreCount);
-      const task = new Promise<unknown>((resolve) => {
-        this.runCommand(cmd, (debuggerResponse: unknown) => {
-          this.handleBacktrace(debuggerResponse, resolve);
-        });
-      });
-      return task;
+      cmd.arg(TARGET, target);
     }
+    if (line) {
+      cmd.arg(LINE, line - 1);
+    }
+    if (column) {
+      cmd.arg(COLUMN, column - 1);
+    }
+    if (!isEmpty(condition)) {
+      cmd.arg(CONDITION, condition);
+    }
+    cmd.arg(IGNORECOUNT, ignoreCount);
+    const task = new Promise<QmlSetBreakpointResponse>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlSetBreakpointResponse) => {
+        QmlEngine.handleResponse(debuggerResponse, resolve);
+      });
+    });
+    return task;
   }
-  handleSetBreakpoint(response: unknown, resolve: (response: unknown) => void) {
-    void this;
-    const rsp = response as QmlSetBreakpointResponse;
-    void rsp;
-    resolve(rsp);
-  }
-  async backtrace(
-    response: DebugProtocol.StackTraceResponse,
-    args: DebugProtocol.StackTraceArguments
-  ) {
+  // handleSetBreakpoint(response: unknown, resolve: (response: unknown) => void) {
+  //   void this;
+  //   const rsp = response as QmlSetBreakpointResponse;
+  //   void rsp;
+  //   resolve(rsp);
+  // }
+  async backtrace(args: DebugProtocol.StackTraceArguments) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "backtrace",
@@ -444,17 +443,16 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
 
     const cmd = new DebuggerCommand(BACKTRACE);
     // wait until the backtrace response is received
-    const task = new Promise<unknown>((resolve) => {
-      this.runCommand(cmd, (debuggerResponse: unknown) => {
-        this.handleBacktrace(debuggerResponse, resolve);
+    const task = new Promise<QmlBacktraceResponse>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlBacktraceResponse) => {
+        QmlEngine.handleResponse(debuggerResponse, resolve);
       });
     });
     const result = await task;
-    const backtrace = (result as QmlBacktraceResponse).body;
+    const backtrace = result.body;
     const fileFinder = new FileFinder();
     fileFinder.excludePatterns = this.excludePatterns;
     fileFinder.buildDirs = this.buildDirs;
-    response.body.totalFrames = backtrace.frames.length;
     let frameCount = 0;
     const stackFrames = await Promise.all(
       backtrace.frames
@@ -488,15 +486,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
           );
         })
     );
-    response.body = {
-      stackFrames: stackFrames
-    };
-    response.success = true;
+    const length = backtrace.frames.length;
+    return { stackFrames, length };
   }
-  handleBacktrace(response: unknown, resolve: (response: unknown) => void) {
-    void this;
-    const backtrace = response as QmlBacktraceResponse;
-    void backtrace;
+  static handleResponse<T>(response: T, resolve: (response: T) => void) {
     resolve(response);
   }
   override messageReceived(packet: Packet): void {
@@ -537,27 +530,27 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       cmd.arg(STEPACTION, NEXT);
     }
 
-    const task = new Promise<unknown>((resolve) => {
-      this.runCommand(cmd, (debuggerResponse: unknown) => {
-        this.handleContinueDebugging(debuggerResponse, resolve);
+    const task = new Promise<QmlContinueResponse>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlContinueResponse) => {
+        QmlEngine.handleResponse(debuggerResponse, resolve);
         this.notifyInferiorRunOk();
       });
     });
     return task;
   }
-  handleContinueDebugging(
-    response: unknown,
-    resolve: (response: unknown) => void
-  ) {
-    void this;
-    const rsp = response as QmlContinueResponse;
-    resolve(rsp);
-  }
+  // handleContinueDebugging(
+  //   response: unknown,
+  //   resolve: (response: unknown) => void
+  // ) {
+  //   void this;
+  //   const rsp = response as QmlContinueResponse;
+  //   resolve(rsp);
+  // }
   analyzeV8Message(packet: Packet) {
-    const message = packet.readJsonUTF8() as IQmlMessage;
+    const message = packet.readJsonUTF8() as QmlMessage;
     const type = message.type;
     if (type === 'response') {
-      const response = message as IQmlResponse;
+      const response = message as QmlResponse<QmlResponseBodySetBreakpoint>;
       const debugCommand = response.command;
       const success = response.success;
       if (!success) {
@@ -618,7 +611,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         // clearRefs();
         const breakData = response.body;
         const invocationText = breakData.invocationText;
-        const scriptUrl = breakData.script.name;
+        const scriptUrl = breakData.script;
         const sourceLineText = breakData.sourceLineText;
         const v8BreakpointIdList = breakData.breakpoints;
         logger.info('invocationText:', invocationText);
@@ -645,7 +638,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     );
     const breakpointIds = breakData.breakpoints;
     const description: string[] = [];
-    description.push(breakData.script.name);
+    description.push(breakData.script);
     description.push(breakData.sourceLineText);
     description.push(breakData.invocationText);
     description.push(breakData.breakpoints.join(','));
