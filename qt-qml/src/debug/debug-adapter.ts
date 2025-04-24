@@ -234,6 +234,21 @@ export class QmlDebugSession extends LoggingDebugSession {
     };
     this.sendResponse(response);
   }
+  protected override async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request) {
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QML engine not initialized');
+      }
+      logger.info('Variables request:', JSON.stringify(args));
+      const variables = await this._qmlEngine.lookup(args);
+      response.body = {
+        variables: variables
+      };
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
+  }
   protected override async stackTraceRequest(
     response: DebugProtocol.StackTraceResponse,
     args: DebugProtocol.StackTraceArguments,

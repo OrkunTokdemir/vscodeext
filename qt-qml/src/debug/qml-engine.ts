@@ -33,10 +33,12 @@ import {
   DISCONNECT,
   ENABLED,
   EVENT,
+  HANDLES,
   IGNORECOUNT,
   IN,
   INTERRUPT,
   LINE,
+  LOOKUP,
   NEXT,
   OUT,
   SCRIPTREGEXP,
@@ -55,6 +57,13 @@ import { FileFinder } from '@debug/file-finder';
 import { QmlEngineUI } from '@debug/ui';
 
 const logger = createLogger('qml-engine');
+
+interface LookupData {
+  iname: string;
+  name: string;
+  exp: string;
+}
+type LookUpItems = Map<number, LookupData>;
 
 export enum DebuggerState {
   DebuggerNotReady, // Debugger not started
@@ -182,6 +191,11 @@ interface QmlBacktrace {
   frames: QmlFrame[];
 }
 
+export type QmlLookupBody = Record<string, QmlVariable>;
+
+
+export type QmlLookupResponse = QmlResponse<QmlLookupBody>;
+
 export interface QmlContinueResponse extends QmlResponse<undefined> {
   command: 'continue';
 }
@@ -198,6 +212,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     number,
     // TODO: Get rid of unknown
     unknown
+  >();
+  private readonly _currentlyLookingUp: LookUpItems = new Map<
+    number,
+    LookupData
   >();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
@@ -480,6 +498,44 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       this.analyzeV8Message(packet);
     }
   }
+  async lookup(items: LookUpItems) {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "lookup",
+    //      "arguments" : { "handles"       : <array of handles>,
+    //                      "includeSource" : <boolean indicating whether
+    //                                          the source will be included when
+    //                                          script objects are returned>,
+    //                    }
+    //    }
+    if (items.size === 0) {
+      return undefined;
+    }
+
+    const handles = new Array<number>();
+    items.forEach((value, key) => {
+      if (!this._currentlyLookingUp.has(key)) {
+        this._currentlyLookingUp.set(key, value);
+        handles.push(key);
+      }
+    });
+    if (handles.length === 0) {
+      return undefined;
+    }
+    const cmd = new DebuggerCommand(LOOKUP);
+    cmd.arg(HANDLES, handles);
+    const task = new Promise<QmlLookupResponse>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlLookupResponse) => {
+        QmlEngine.handleResponse(debuggerResponse, resolve);
+      });
+    });
+    const result = await task;
+    if (!result.success) {
+      logger.error('Lookup failed');
+      return undefined;
+    }
+    return this.handleLookup(result);
+  }
   async continueDebugging(action: StepAction) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
@@ -505,6 +561,75 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       });
     });
     return task;
+  }
+  handleLookup(response: QmlLookupResponse) {
+    //    { "seq"         : <number>,
+    //      "type"        : "response",
+    //      "request_seq" : <number>,
+    //      "command"     : "lookup",
+    //      "body"        : <array of serialized objects indexed using their handle>
+    //      "running"     : <is the VM running after sending this response>
+    //      "success"     : true
+    //    }
+    const body = response.body;
+    const variables: DebugProtocol.Variable[] = [];
+    const IsOKToShow = (variable: QmlVariable) => {
+      if (variable.type === 'function') {
+        return false;
+      }
+      return true;
+    }
+    const generateDapVariable = (variable: QmlVariable) => {
+      if (!variable.name) {
+        return undefined
+      }
+      const dapVariable: DebugProtocol.Variable = {
+        name: variable.name,
+        value: "",
+        variablesReference: 0,
+        namedVariables: 0,
+        indexedVariables: 0,
+        presentationHint:
+        {
+            kind: "property"
+        }
+      }
+      if (variable.type === "object") {
+        if (variable.value !== null) {
+          dapVariable.value = "object";
+        } else {
+          dapVariable.value = "null";
+        }
+        dapVariable.namedVariables = variable.value as number;
+        if (dapVariable.namedVariables !== 0 && variable.ref !== undefined) {
+          dapVariable.variablesReference =  variable.ref + 1;
+        }
+        }else if (variable.type === "function")
+        {
+            dapVariable.value = "function";
+            if (dapVariable.presentationHint) {
+              dapVariable.presentationHint.kind = "method";
+            }
+        } else if (variable.type === "undefined")
+        {
+            dapVariable.value = "undefined";
+        } else if (variable.type === "string")
+        {
+            const stringValue = variable.value as string;
+            dapVariable.value = "\"" + stringValue + "\"";
+        }
+      return dapVariable;
+    }
+    for (const [handleString, value] of Object.entries(body)) {
+      const handle = Number(handleString);
+      this._currentlyLookingUp.delete(handle);
+      if (IsOKToShow(value)) {
+        const dapVar = generateDapVariable(value);
+        if (dapVar) {
+          variables.push(dapVar);
+        }
+      }
+    }
   }
   analyzeV8Message(packet: Packet) {
     const message = packet.readJsonUTF8() as QmlMessage;
