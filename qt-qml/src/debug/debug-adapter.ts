@@ -234,13 +234,48 @@ export class QmlDebugSession extends LoggingDebugSession {
     };
     this.sendResponse(response);
   }
-  protected override async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request) {
+  protected override async scopesRequest(
+    response: DebugProtocol.ScopesResponse,
+    args: DebugProtocol.ScopesArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
+  ) {
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QML engine not initialized');
+      }
+      logger.info('Scopes request:', JSON.stringify(args));
+      const frame = await this._qmlEngine.getFrame(args.frameId);
+      void frame;
+      // const scopes = await this._qmlEngine.scopes(args.frameId);
+      // if (scopes === undefined) {
+      //   throw new Error('Scopes are undefined');
+      // }
+      // response.body = {
+      //   scopes: scopes
+      // };
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
+  }
+  protected override async variablesRequest(
+    response: DebugProtocol.VariablesResponse,
+    args: DebugProtocol.VariablesArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
+  ) {
     try {
       if (!this._qmlEngine) {
         throw new Error('QML engine not initialized');
       }
       logger.info('Variables request:', JSON.stringify(args));
-      const variables = await this._qmlEngine.lookup(args);
+      const variables = await this._qmlEngine.lookup(
+        args.variablesReference - 1
+      );
+      if (variables === undefined) {
+        throw new Error('Variables are undefined');
+      }
       response.body = {
         variables: variables
       };

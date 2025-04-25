@@ -33,6 +33,7 @@ import {
   DISCONNECT,
   ENABLED,
   EVENT,
+  FRAME,
   HANDLES,
   IGNORECOUNT,
   IN,
@@ -40,7 +41,9 @@ import {
   LINE,
   LOOKUP,
   NEXT,
+  NUMBER,
   OUT,
+  SCOPE,
   SCRIPTREGEXP,
   SETBREAKPOINT,
   STEPACTION,
@@ -58,12 +61,12 @@ import { QmlEngineUI } from '@debug/ui';
 
 const logger = createLogger('qml-engine');
 
-interface LookupData {
-  iname: string;
-  name: string;
-  exp: string;
-}
-type LookUpItems = Map<number, LookupData>;
+// interface LookupData {
+//   iname: string;
+//   name: string;
+//   exp: string;
+// }
+type LookUpItems = Set<number>;
 
 export enum DebuggerState {
   DebuggerNotReady, // Debugger not started
@@ -191,10 +194,10 @@ interface QmlBacktrace {
   frames: QmlFrame[];
 }
 
-export type QmlLookupBody = Record<string, QmlVariable>;
-
-
-export type QmlLookupResponse = QmlResponse<QmlLookupBody>;
+type QmlLookupBody = Record<string, QmlVariable>;
+type QmlLookupResponse = QmlResponse<QmlLookupBody>;
+type QmlFrameResponse = QmlResponse<QmlFrame>;
+type QmlScopeResponse = QmlResponse<QmlScope>;
 
 export interface QmlContinueResponse extends QmlResponse<undefined> {
   command: 'continue';
@@ -213,10 +216,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     // TODO: Get rid of unknown
     unknown
   >();
-  private readonly _currentlyLookingUp: LookUpItems = new Map<
-    number,
-    LookupData
-  >();
+  private readonly _currentlyLookingUp: LookUpItems = new Set<number>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
   readonly mainQmlThreadId = 1;
@@ -498,7 +498,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       this.analyzeV8Message(packet);
     }
   }
-  async lookup(items: LookUpItems) {
+  async lookup(item: number) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "lookup",
@@ -508,22 +508,13 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //                                          script objects are returned>,
     //                    }
     //    }
-    if (items.size === 0) {
-      return undefined;
+
+    if (!this._currentlyLookingUp.has(item)) {
+      this._currentlyLookingUp.add(item);
     }
 
-    const handles = new Array<number>();
-    items.forEach((value, key) => {
-      if (!this._currentlyLookingUp.has(key)) {
-        this._currentlyLookingUp.set(key, value);
-        handles.push(key);
-      }
-    });
-    if (handles.length === 0) {
-      return undefined;
-    }
     const cmd = new DebuggerCommand(LOOKUP);
-    cmd.arg(HANDLES, handles);
+    cmd.arg(HANDLES, [item]);
     const task = new Promise<QmlLookupResponse>((resolve) => {
       this.runCommand(cmd, (debuggerResponse: QmlLookupResponse) => {
         QmlEngine.handleResponse(debuggerResponse, resolve);
@@ -535,6 +526,62 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       return undefined;
     }
     return this.handleLookup(result);
+  }
+  async getFrame(frameId: number) {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "frame",
+    //      "arguments" : { "number" : <frame number> }
+    //    }
+    const cmd = new DebuggerCommand(FRAME);
+    cmd.arg(NUMBER, frameId);
+    const task = new Promise<QmlFrameResponse>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlFrameResponse) => {
+        QmlEngine.handleResponse(debuggerResponse, resolve);
+      });
+    });
+    const result = await task;
+    if (!result.success) {
+      logger.error('Frame request failed');
+      return undefined;
+    }
+    await this.handleFrame(result);
+  }
+  async handleFrame(frame: QmlFrameResponse) {
+  }
+  async scope(number: number, frameNumber: number) {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "scope",
+    //      "arguments" : { "number" : <scope number>
+    //                      "frameNumber" : <frame number, optional uses selected
+    //                                      frame if missing>
+    //                    }
+    //    }
+    // DebuggerCommand cmd(SCOPE);
+    // cmd.arg(NUMBER, number);
+    // if (frameNumber != -1)
+    //     cmd.arg(FRAMENUMBER, frameNumber);
+
+    // runCommand(cmd, CB(handleScope));
+    const cmd = new DebuggerCommand(SCOPE);
+    cmd.arg(NUMBER, number);
+    if (frameNumber !== -1) {
+      cmd.arg(FRAME, frameNumber);
+    }
+    const task = new Promise<QmlScopeResponse>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlScopeResponse) => {
+        QmlEngine.handleResponse(debuggerResponse, resolve);
+      });
+    });
+    const result = await task;
+    if (!result.success) {
+      logger.error('Scope request failed');
+      return undefined;
+    }
+    await this.handleScope(result);
+  }
+  async handleScope(scope: QmlScopeResponse) {
   }
   async continueDebugging(action: StepAction) {
     //    { "seq"       : <number>,
@@ -571,65 +618,63 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //      "running"     : <is the VM running after sending this response>
     //      "success"     : true
     //    }
+
     const body = response.body;
-    const variables: DebugProtocol.Variable[] = [];
+    const retVariables: DebugProtocol.Variable[] = [];
     const IsOKToShow = (variable: QmlVariable) => {
       if (variable.type === 'function') {
         return false;
       }
       return true;
-    }
+    };
     const generateDapVariable = (variable: QmlVariable) => {
       if (!variable.name) {
-        return undefined
+        return undefined;
       }
       const dapVariable: DebugProtocol.Variable = {
         name: variable.name,
-        value: "",
+        value: '',
         variablesReference: 0,
         namedVariables: 0,
         indexedVariables: 0,
-        presentationHint:
-        {
-            kind: "property"
+        presentationHint: {
+          kind: 'property'
         }
-      }
-      if (variable.type === "object") {
+      };
+      if (variable.type === 'object') {
         if (variable.value !== null) {
-          dapVariable.value = "object";
+          dapVariable.value = 'object';
         } else {
-          dapVariable.value = "null";
+          dapVariable.value = 'null';
         }
         dapVariable.namedVariables = variable.value as number;
         if (dapVariable.namedVariables !== 0 && variable.ref !== undefined) {
-          dapVariable.variablesReference =  variable.ref + 1;
+          dapVariable.variablesReference = variable.ref + 1;
         }
-        }else if (variable.type === "function")
-        {
-            dapVariable.value = "function";
-            if (dapVariable.presentationHint) {
-              dapVariable.presentationHint.kind = "method";
-            }
-        } else if (variable.type === "undefined")
-        {
-            dapVariable.value = "undefined";
-        } else if (variable.type === "string")
-        {
-            const stringValue = variable.value as string;
-            dapVariable.value = "\"" + stringValue + "\"";
+      } else if (variable.type === 'function') {
+        dapVariable.value = 'function';
+        if (dapVariable.presentationHint) {
+          dapVariable.presentationHint.kind = 'method';
         }
+      } else if (variable.type === 'undefined') {
+        dapVariable.value = 'undefined';
+      } else if (variable.type === 'string') {
+        const stringValue = variable.value as string;
+        dapVariable.value = '"' + stringValue + '"';
+      }
       return dapVariable;
-    }
+    };
     for (const [handleString, value] of Object.entries(body)) {
       const handle = Number(handleString);
       this._currentlyLookingUp.delete(handle);
       if (IsOKToShow(value)) {
         const dapVar = generateDapVariable(value);
         if (dapVar) {
-          variables.push(dapVar);
+          retVariables.push(dapVar);
         }
       }
     }
+    return retVariables;
   }
   analyzeV8Message(packet: Packet) {
     const message = packet.readJsonUTF8() as QmlMessage;
