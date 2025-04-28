@@ -3,7 +3,7 @@
 
 import path from 'path';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { Source, StackFrame, StoppedEvent } from '@vscode/debugadapter';
+import { Scope, Source, StackFrame, StoppedEvent } from '@vscode/debugadapter';
 
 import {
   QmlDebugClient,
@@ -527,14 +527,47 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     return this.handleLookup(result);
   }
-  async getFrame(frameId: number) {
+  private static convertScopeName(type: number) {
+    switch (type) {
+      case -1:
+        return 'Qml Context';
+
+      case 0:
+        return 'Globals';
+
+      case 1:
+        return 'Arguments';
+
+      case 2:
+      case 4:
+        return 'Locals';
+      default:
+        throw new Error('Invalid scope type');
+    }
+  }
+  private static convertScopeType(type: number) {
+    switch (type) {
+      case 0:
+        return 'globals';
+
+      case 1:
+        return 'arguments';
+
+      case 2:
+      case 4:
+        return 'locals';
+      default:
+        throw new Error('Invalid scope type');
+    }
+  }
+  async frame(frameID: number) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "frame",
     //      "arguments" : { "number" : <frame number> }
     //    }
     const cmd = new DebuggerCommand(FRAME);
-    cmd.arg(NUMBER, frameId);
+    cmd.arg(NUMBER, frameID);
     const task = new Promise<QmlFrameResponse>((resolve) => {
       this.runCommand(cmd, (debuggerResponse: QmlFrameResponse) => {
         QmlEngine.handleResponse(debuggerResponse, resolve);
@@ -545,9 +578,48 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       logger.error('Frame request failed');
       return undefined;
     }
-    await this.handleFrame(result);
+    return this.handleFrame(frameID, result);
   }
-  async handleFrame(frame: QmlFrameResponse) {
+  async handleFrame(frameID: number, response: QmlFrameResponse) {
+    //    { "seq"         : <number>,
+    //      "type"        : "response",
+    //      "request_seq" : <number>,
+    //      "command"     : "frame",
+    //      "body"        : { "index"          : <frame number>,
+    //                        "receiver"       : <frame receiver>,
+    //                        "func"           : <function invoked>,
+    //                        "script"         : <script for the function>,
+    //                        "constructCall"  : <boolean indicating whether the function was called as constructor>,
+    //                        "debuggerFrame"  : <boolean indicating whether this is an internal debugger frame>,
+    //                        "arguments"      : [ { name: <name of the argument - missing of anonymous argument>,
+    //                                               value: <value of the argument>
+    //                                             },
+    //                                             ... <the array contains all the arguments>
+    //                                           ],
+    //                        "locals"         : [ { name: <name of the local variable>,
+    //                                               value: <value of the local variable>
+    //                                             },
+    //                                             ... <the array contains all the locals>
+    //                                           ],
+    //                        "position"       : <source position>,
+    //                        "line"           : <source line>,
+    //                        "column"         : <source column within the line>,
+    //                        "sourceLineText" : <text for current source line>,
+    //                        "scopes"         : [ <array of scopes, see scope request below for format> ],
+
+    //                      }
+    //      "running"     : <is the VM running after sending this response>
+    //      "success"     : true
+    //    }
+    const frame = response.body;
+    const scopes: DebugProtocol.Scope[] = [];
+    for (const scopeRef of frame.scopes) {
+      const dapScope = await this.scope(scopeRef.index, frameID);
+      if (dapScope) {
+        scopes.push(dapScope);
+      }
+    }
+    return scopes;
   }
   async scope(number: number, frameNumber: number) {
     //    { "seq"       : <number>,
@@ -558,6 +630,8 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     //                                      frame if missing>
     //                    }
     //    }
+
+    // TODO: Remove below code
     // DebuggerCommand cmd(SCOPE);
     // cmd.arg(NUMBER, number);
     // if (frameNumber != -1)
@@ -579,9 +653,35 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       logger.error('Scope request failed');
       return undefined;
     }
-    await this.handleScope(result);
+    const scope = QmlEngine.handleScope(result);
+    return scope;
   }
-  async handleScope(scope: QmlScopeResponse) {
+  static handleScope(response: QmlScopeResponse) {
+    const scope = response.body;
+    if (scope.object === undefined) {
+      logger.error('Scope object is undefined');
+      return undefined;
+    }
+    // check type of scope.object.value is unknown
+    if (typeof scope.object.value !== 'number') {
+      logger.error('Scope object value is not a number');
+      return undefined;
+    }
+    if (scope.object.value === 0) {
+      logger.error('Scope object value is 0');
+      return undefined;
+    }
+
+    const dapScope: DebugProtocol.Scope = new Scope(
+      QmlEngine.convertScopeName(scope.type),
+      scope.index,
+      false
+    );
+
+    dapScope.presentationHint = QmlEngine.convertScopeType(scope.type);
+    dapScope.variablesReference = scope.object.handle + 1;
+    dapScope.namedVariables = scope.object.value;
+    return dapScope;
   }
   async continueDebugging(action: StepAction) {
     //    { "seq"       : <number>,
@@ -628,11 +728,13 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       return true;
     };
     const generateDapVariable = (variable: QmlVariable) => {
-      if (!variable.name) {
+      const name = variable.name;
+      if (!name) {
         return undefined;
       }
       const dapVariable: DebugProtocol.Variable = {
-        name: variable.name,
+        name: name,
+        type: variable.type,
         value: '',
         variablesReference: 0,
         namedVariables: 0,
@@ -656,6 +758,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         if (dapVariable.presentationHint) {
           dapVariable.presentationHint.kind = 'method';
         }
+      } else if (variable.type === 'number') {
+        dapVariable.value = (variable.value as number).toString();
+      } else if (variable.type === 'boolean') {
+        dapVariable.value = (variable.value as boolean) ? 'true' : 'false';
       } else if (variable.type === 'undefined') {
         dapVariable.value = 'undefined';
       } else if (variable.type === 'string') {
@@ -664,13 +770,20 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       }
       return dapVariable;
     };
-    for (const [handleString, value] of Object.entries(body)) {
-      const handle = Number(handleString);
-      this._currentlyLookingUp.delete(handle);
-      if (IsOKToShow(value)) {
-        const dapVar = generateDapVariable(value);
-        if (dapVar) {
-          retVariables.push(dapVar);
+    const variables = Object.values(body);
+    for (const variable of variables) {
+      const subVariables = variable.properties;
+      if (!subVariables) {
+        continue;
+      }
+      for (const subVar of subVariables) {
+        const handle = subVar.handle;
+        this._currentlyLookingUp.delete(handle);
+        if (IsOKToShow(subVar)) {
+          const dapVar = generateDapVariable(subVar);
+          if (dapVar) {
+            retVariables.push(dapVar);
+          }
         }
       }
     }

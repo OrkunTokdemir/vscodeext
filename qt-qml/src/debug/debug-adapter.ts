@@ -245,15 +245,13 @@ export class QmlDebugSession extends LoggingDebugSession {
         throw new Error('QML engine not initialized');
       }
       logger.info('Scopes request:', JSON.stringify(args));
-      const frame = await this._qmlEngine.getFrame(args.frameId);
-      void frame;
-      // const scopes = await this._qmlEngine.scopes(args.frameId);
-      // if (scopes === undefined) {
-      //   throw new Error('Scopes are undefined');
-      // }
-      // response.body = {
-      //   scopes: scopes
-      // };
+      const scopes = await this._qmlEngine.frame(args.frameId);
+      if (scopes === undefined) {
+        throw new Error('Scopes are undefined');
+      }
+      response.body = {
+        scopes: scopes
+      };
       this.sendResponse(response);
     } catch (err) {
       this.sendError(response, 1, err as string);
