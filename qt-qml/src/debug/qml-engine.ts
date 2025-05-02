@@ -29,10 +29,13 @@ import {
   COLUMN,
   CONDITION,
   CONNECT,
+  CONTEXT,
   CONTINEDEBUGGING,
   DISCONNECT,
   ENABLED,
+  EVALUATE,
   EVENT,
+  EXPRESSION,
   FRAME,
   HANDLES,
   IGNORECOUNT,
@@ -219,6 +222,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   private readonly _currentlyLookingUp: LookUpItems = new Set<number>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
+  private readonly _currentStackVariableTypes = new Map<string, string>();
   readonly mainQmlThreadId = 1;
   private _sendBuffer: Packet[] = [];
   private _sequence = -1;
@@ -527,6 +531,19 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     return this.handleLookup(result);
   }
+  setCurrentStackVariablesType(variables: DebugProtocol.Variable[]) {
+    this._currentStackVariableTypes.clear();
+    variables.forEach((variable) => {
+      if (variable.variablesReference) {
+        if (variable.type) {
+          this._currentStackVariableTypes.set(
+            variable.variablesReference.toString(),
+            variable.type
+          );
+        }
+      }
+    });
+  }
   private static convertScopeName(type: number) {
     switch (type) {
       case -1:
@@ -560,14 +577,14 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         throw new Error('Invalid scope type');
     }
   }
-  async frame(frameID: number) {
+  async frame(framerNumber: number) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "frame",
     //      "arguments" : { "number" : <frame number> }
     //    }
     const cmd = new DebuggerCommand(FRAME);
-    cmd.arg(NUMBER, frameID);
+    cmd.arg(NUMBER, framerNumber);
     const task = new Promise<QmlFrameResponse>((resolve) => {
       this.runCommand(cmd, (debuggerResponse: QmlFrameResponse) => {
         QmlEngine.handleResponse(debuggerResponse, resolve);
@@ -578,9 +595,43 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       logger.error('Frame request failed');
       return undefined;
     }
-    return this.handleFrame(frameID, result);
+    return this.handleFrame(framerNumber, result);
   }
-  async handleFrame(frameID: number, response: QmlFrameResponse) {
+  async setVariable(args: DebugProtocol.SetVariableArguments) {
+    const expr = `${args.name} = ${args.value};`;
+    return this.evaluate(expr, -1);
+  }
+  async evaluate(expr: string, context: number) {
+    //    { "seq"       : <number>,
+    //      "type"      : "request",
+    //      "command"   : "evaluate",
+    //      "arguments" : { "expression"    : <expression to evaluate>,
+    //                      "frame"         : <number>,
+    //                      "global"        : <boolean>,
+    //                      "disable_break" : <boolean>,
+    //                      "context"       : <object id>
+    //                    }
+    //    }
+
+    const cmd = new DebuggerCommand(EVALUATE);
+    cmd.arg(EXPRESSION, expr);
+    cmd.arg(FRAME, 0);
+    if (context >= 0) {
+      cmd.arg(CONTEXT, context);
+    }
+    const task = new Promise<QmlResponse<void>>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlResponse<void>) => {
+        QmlEngine.handleResponse(debuggerResponse, resolve);
+      });
+    });
+    const result = await task;
+    if (!result.success) {
+      logger.error('Evaluate request failed');
+      return undefined;
+    }
+    return result;
+  }
+  async handleFrame(framerNumber: number, response: QmlFrameResponse) {
     //    { "seq"         : <number>,
     //      "type"        : "response",
     //      "request_seq" : <number>,
@@ -614,7 +665,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     const frame = response.body;
     const scopes: DebugProtocol.Scope[] = [];
     for (const scopeRef of frame.scopes) {
-      const dapScope = await this.scope(scopeRef.index, frameID);
+      const dapScope = await this.scope(scopeRef.index, framerNumber);
       if (dapScope) {
         scopes.push(dapScope);
       }

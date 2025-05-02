@@ -218,6 +218,7 @@ export class QmlDebugSession extends LoggingDebugSession {
   ) {
     logger.info('Initialize request:', JSON.stringify(args));
     response.body = {};
+    response.body.supportsSetVariable = true;
     this.sendResponse(response);
   }
   protected override threadsRequest(
@@ -257,6 +258,32 @@ export class QmlDebugSession extends LoggingDebugSession {
       this.sendError(response, 1, err as string);
     }
   }
+  protected override async setVariableRequest(
+    response: DebugProtocol.SetVariableResponse,
+    args: DebugProtocol.SetVariableArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
+  ) {
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QML engine not initialized');
+      }
+      logger.info('Set variable request:', JSON.stringify(args));
+      const result = await this._qmlEngine.setVariable(args);
+      if (result === undefined) {
+        response.success = false;
+        response.message = 'Cannot set variable';
+        this.sendResponse(response);
+        return;
+      }
+      response.body = {
+        value: args.value
+      };
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
+  }
   protected override async variablesRequest(
     response: DebugProtocol.VariablesResponse,
     args: DebugProtocol.VariablesArguments,
@@ -274,6 +301,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       if (variables === undefined) {
         throw new Error('Variables are undefined');
       }
+      this._qmlEngine.setCurrentStackVariablesType(variables);
       response.body = {
         variables: variables
       };
