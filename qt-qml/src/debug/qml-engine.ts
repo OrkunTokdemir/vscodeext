@@ -223,7 +223,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   private readonly _currentlyLookingUp: LookUpItems = new Set<number>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
-  private readonly _currentStackVariableTypes = new Map<string, string>();
+  // private readonly _currentStackVariableTypes = new Map<string, string>();
   readonly mainQmlThreadId = 1;
   private _sendBuffer: Packet[] = [];
   private _sequence = -1;
@@ -532,33 +532,33 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     return this.handleLookup(result);
   }
-  setCurrentStackVariablesType(variables: DebugProtocol.Variable[]) {
-    this._currentStackVariableTypes.clear();
-    variables.forEach((variable) => {
-      if (variable.variablesReference) {
-        if (variable.type) {
-          this._currentStackVariableTypes.set(
-            variable.variablesReference.toString(),
-            variable.type
-          );
-        }
-      }
-    });
-  }
+  // setCurrentStackVariablesType(variables: DebugProtocol.Variable[]) {
+  //   this._currentStackVariableTypes.clear();
+  //   variables.forEach((variable) => {
+  //     if (variable.variablesReference) {
+  //       if (variable.type) {
+  //         this._currentStackVariableTypes.set(
+  //           variable.variablesReference.toString(),
+  //           variable.type
+  //         );
+  //       }
+  //     }
+  //   });
+  // }
   private static convertScopeName(type: number) {
     switch (type) {
       case -1:
         return 'Qml Context';
-
       case 0:
-        return 'Globals';
-
+        return 'Global';
       case 1:
-        return 'Arguments';
-
+        return 'Local';
       case 2:
+        return 'With';
+      case 3:
+        return 'Closure';
       case 4:
-        return 'Locals';
+        return 'Catch';
       default:
         throw new Error('Invalid scope type');
     }
@@ -567,10 +567,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     switch (type) {
       case 0:
         return 'globals';
-
       case 1:
-        return 'arguments';
-
       case 2:
       case 4:
         return 'locals';
@@ -709,6 +706,27 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     return scope;
   }
   static handleScope(response: QmlScopeResponse) {
+    //    { "seq"         : <number>,
+    //      "type"        : "response",
+    //      "request_seq" : <number>,
+    //      "command"     : "scope",
+    //      "body"        : { "index"      : <index of this scope in the scope chain. Index 0 is the top scope
+    //                                        and the global scope will always have the highest index for a
+    //                                        frame>,
+    //                        "frameIndex" : <index of the frame>,
+    //                        "type"       : <type of the scope:
+    //                                         0: Global
+    //                                         1: Local
+    //                                         2: With
+    //                                         3: Closure
+    //                                         4: Catch >,
+    //                        "object"     : <the scope object defining the content of the scope.
+    //                                        For local and closure scopes this is transient objects,
+    //                                        which has a negative handle value>
+    //                      }
+    //      "running"     : <is the VM running after sending this response>
+    //      "success"     : true
+    //    }
     const scope = response.body;
     if (scope.object === undefined) {
       logger.error('Scope object is undefined');
@@ -735,6 +753,31 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     dapScope.namedVariables = scope.object.value;
     return dapScope;
   }
+  async getThisVariables() {
+    const exp = 'this';
+    const response = await this.evaluate(exp);
+    if (!response || !response.success) {
+      return undefined;
+    }
+    // Lookup the variables recursively
+    const variables = response.body.properties;
+    if (!variables) {
+      return undefined;
+    }
+    const retVariables: DebugProtocol.Variable[] = [];
+    return retVariables;
+  }
+  // async handleEvaluateExpression(response: QmlEvaluateResponse) {
+  //   //    { "seq"         : <number>,
+  //   //      "type"        : "response",
+  //   //      "request_seq" : <number>,
+  //   //      "command"     : "evaluate",
+  //   //      "body"        : ...
+  //   //      "running"     : <is the VM running after sending this response>
+  //   //      "success"     : true
+  //   //    }
+
+  // }
   async continueDebugging(action: StepAction) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
@@ -775,12 +818,43 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     } else if (variable.type === 'boolean') {
       return (variable.value as boolean) ? 'true' : 'false';
     } else if (variable.type === 'undefined') {
-      return 'undefined';
+      return undefined;
     } else if (variable.type === 'string') {
       const stringValue = variable.value as string;
       return '"' + stringValue + '"';
     }
     return undefined; // Ensure a return value for unsupported types
+  }
+  private static generateDapVariable(variable: QmlVariable) {
+    const name = variable.name;
+    if (!name) {
+      return undefined;
+    }
+    const dapVariable: DebugProtocol.Variable = {
+      name: name,
+      type: variable.type,
+      value: '',
+      variablesReference: 0,
+      namedVariables: 0,
+      indexedVariables: 0,
+      presentationHint: {
+        kind: 'property'
+      }
+    };
+    const value = QmlEngine.convertQmlTypeToValue(variable);
+    if (value === undefined) {
+      return undefined;
+    }
+    dapVariable.value = value;
+    if (variable.type === 'object') {
+      dapVariable.namedVariables = variable.value as number;
+      if (dapVariable.namedVariables !== 0 && variable.ref !== undefined) {
+        dapVariable.variablesReference = variable.ref + 1;
+      }
+    } else if (variable.type === 'function' && dapVariable.presentationHint) {
+      dapVariable.presentationHint.kind = 'method';
+    }
+    return dapVariable;
   }
   handleLookup(response: QmlLookupResponse) {
     //    { "seq"         : <number>,
@@ -800,37 +874,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       }
       return true;
     };
-    const generateDapVariable = (variable: QmlVariable) => {
-      const name = variable.name;
-      if (!name) {
-        return undefined;
-      }
-      const dapVariable: DebugProtocol.Variable = {
-        name: name,
-        type: variable.type,
-        value: '',
-        variablesReference: 0,
-        namedVariables: 0,
-        indexedVariables: 0,
-        presentationHint: {
-          kind: 'property'
-        }
-      };
-      const value = QmlEngine.convertQmlTypeToValue(variable);
-      if (value === undefined) {
-        return undefined;
-      }
-      dapVariable.value = value;
-      if (variable.type === 'object') {
-        dapVariable.namedVariables = variable.value as number;
-        if (dapVariable.namedVariables !== 0 && variable.ref !== undefined) {
-          dapVariable.variablesReference = variable.ref + 1;
-        }
-      } else if (variable.type === 'function' && dapVariable.presentationHint) {
-        dapVariable.presentationHint.kind = 'method';
-      }
-      return dapVariable;
-    };
     const variables = Object.values(body);
     for (const variable of variables) {
       const subVariables = variable.properties;
@@ -841,7 +884,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         const handle = subVar.handle;
         this._currentlyLookingUp.delete(handle);
         if (IsOKToShow(subVar)) {
-          const dapVar = generateDapVariable(subVar);
+          const dapVar = QmlEngine.generateDapVariable(subVar);
           if (dapVar) {
             retVariables.push(dapVar);
           }

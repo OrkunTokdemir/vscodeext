@@ -288,9 +288,7 @@ export class QmlDebugSession extends LoggingDebugSession {
       response.body = {
         result: value,
         type: result.body.type,
-        variablesReference: result.body.handle + 1,
-        namedVariables: 0,
-        indexedVariables: 0,
+        variablesReference: 0,
         presentationHint: {
           kind: 'property'
         }
@@ -349,7 +347,12 @@ export class QmlDebugSession extends LoggingDebugSession {
       if (variables === undefined) {
         throw new Error('Variables are undefined');
       }
-      this._qmlEngine.setCurrentStackVariablesType(variables);
+      const thisVariables = await this._qmlEngine.getThisVariables();
+      if (thisVariables) {
+        variables.push(...thisVariables);
+      }
+
+      // this._qmlEngine.setCurrentStackVariablesType(variables);
       response.body = {
         variables: variables
       };
