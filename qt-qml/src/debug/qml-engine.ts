@@ -201,6 +201,7 @@ type QmlLookupBody = Record<string, QmlVariable>;
 type QmlLookupResponse = QmlResponse<QmlLookupBody>;
 type QmlFrameResponse = QmlResponse<QmlFrame>;
 type QmlScopeResponse = QmlResponse<QmlScope>;
+type QmlEvaluateResponse = QmlResponse<QmlVariable>;
 
 export interface QmlContinueResponse extends QmlResponse<undefined> {
   command: 'continue';
@@ -601,7 +602,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     const expr = `${args.name} = ${args.value};`;
     return this.evaluate(expr, -1);
   }
-  async evaluate(expr: string, context: number) {
+  async evaluate(expr: string, frameID = 0, context = 0) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
     //      "command"   : "evaluate",
@@ -615,12 +616,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
 
     const cmd = new DebuggerCommand(EVALUATE);
     cmd.arg(EXPRESSION, expr);
-    cmd.arg(FRAME, 0);
+    cmd.arg(FRAME, frameID);
     if (context >= 0) {
       cmd.arg(CONTEXT, context);
     }
-    const task = new Promise<QmlResponse<void>>((resolve) => {
-      this.runCommand(cmd, (debuggerResponse: QmlResponse<void>) => {
+    const task = new Promise<QmlEvaluateResponse>((resolve) => {
+      this.runCommand(cmd, (debuggerResponse: QmlEvaluateResponse) => {
         QmlEngine.handleResponse(debuggerResponse, resolve);
       });
     });
@@ -760,6 +761,27 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     });
     return task;
   }
+  static convertQmlTypeToValue(variable: QmlVariable) {
+    if (variable.type === 'object') {
+      if (variable.value !== null) {
+        return 'object';
+      } else {
+        return 'null';
+      }
+    } else if (variable.type === 'function') {
+      return 'function';
+    } else if (variable.type === 'number') {
+      return (variable.value as number).toString();
+    } else if (variable.type === 'boolean') {
+      return (variable.value as boolean) ? 'true' : 'false';
+    } else if (variable.type === 'undefined') {
+      return 'undefined';
+    } else if (variable.type === 'string') {
+      const stringValue = variable.value as string;
+      return '"' + stringValue + '"';
+    }
+    return undefined; // Ensure a return value for unsupported types
+  }
   handleLookup(response: QmlLookupResponse) {
     //    { "seq"         : <number>,
     //      "type"        : "response",
@@ -794,30 +816,18 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
           kind: 'property'
         }
       };
+      const value = QmlEngine.convertQmlTypeToValue(variable);
+      if (value === undefined) {
+        return undefined;
+      }
+      dapVariable.value = value;
       if (variable.type === 'object') {
-        if (variable.value !== null) {
-          dapVariable.value = 'object';
-        } else {
-          dapVariable.value = 'null';
-        }
         dapVariable.namedVariables = variable.value as number;
         if (dapVariable.namedVariables !== 0 && variable.ref !== undefined) {
           dapVariable.variablesReference = variable.ref + 1;
         }
-      } else if (variable.type === 'function') {
-        dapVariable.value = 'function';
-        if (dapVariable.presentationHint) {
-          dapVariable.presentationHint.kind = 'method';
-        }
-      } else if (variable.type === 'number') {
-        dapVariable.value = (variable.value as number).toString();
-      } else if (variable.type === 'boolean') {
-        dapVariable.value = (variable.value as boolean) ? 'true' : 'false';
-      } else if (variable.type === 'undefined') {
-        dapVariable.value = 'undefined';
-      } else if (variable.type === 'string') {
-        const stringValue = variable.value as string;
-        dapVariable.value = '"' + stringValue + '"';
+      } else if (variable.type === 'function' && dapVariable.presentationHint) {
+        dapVariable.presentationHint.kind = 'method';
       }
       return dapVariable;
     };

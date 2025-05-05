@@ -258,6 +258,54 @@ export class QmlDebugSession extends LoggingDebugSession {
       this.sendError(response, 1, err as string);
     }
   }
+  protected override async evaluateRequest(
+    response: DebugProtocol.EvaluateResponse,
+    args: DebugProtocol.EvaluateArguments,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _request?: DebugProtocol.Request
+  ) {
+    try {
+      if (!this._qmlEngine) {
+        throw new Error('QML engine not initialized');
+      }
+      logger.info('Evaluate request:', JSON.stringify(args));
+      const result = await this._qmlEngine.evaluate(
+        args.expression,
+        args.frameId
+      );
+      if (result === undefined) {
+        const message = 'Cannot evaluate expression "' + args.expression + '"';
+        response.success = false;
+        response.message = message;
+        void vscode.window.showErrorMessage(message);
+        return;
+      }
+      const value = QmlEngine.convertQmlTypeToValue(result.body);
+      if (value === undefined) {
+        throw new Error('Value is undefined');
+      }
+
+      response.body = {
+        result: value,
+        type: result.body.type,
+        variablesReference: result.body.handle + 1,
+        namedVariables: 0,
+        indexedVariables: 0,
+        presentationHint: {
+          kind: 'property'
+        }
+      };
+      if (result.body.type === 'object') {
+        response.body.namedVariables = (result.body.value as number) + 1;
+      } else if (result.body.type === 'function') {
+        response.body.presentationHint = response.body.presentationHint ?? {};
+        response.body.presentationHint.kind = 'method';
+      }
+      this.sendResponse(response);
+    } catch (err) {
+      this.sendError(response, 1, err as string);
+    }
+  }
   protected override async setVariableRequest(
     response: DebugProtocol.SetVariableResponse,
     args: DebugProtocol.SetVariableArguments,
