@@ -341,15 +341,22 @@ export class QmlDebugSession extends LoggingDebugSession {
         throw new Error('QML engine not initialized');
       }
       logger.info('Variables request:', JSON.stringify(args));
-      const variables = await this._qmlEngine.lookup(
-        args.variablesReference - 1
-      );
+      const thisIncluded =
+        args.variablesReference !== this._qmlEngine.thisReference;
+      let variablesReference = args.variablesReference;
+      if (thisIncluded) {
+        variablesReference = variablesReference - 1;
+      }
+      const variables = await this._qmlEngine.lookup(variablesReference);
       if (variables === undefined) {
         throw new Error('Variables are undefined');
       }
-      const thisVariables = await this._qmlEngine.getThisVariables();
-      if (thisVariables) {
-        variables.push(...thisVariables);
+      if (thisIncluded) {
+        const thisVariable = await this._qmlEngine.getThisVariable();
+        if (thisVariable) {
+          this._qmlEngine.thisReference = thisVariable.variablesReference;
+          variables.push(thisVariable);
+        }
       }
 
       // this._qmlEngine.setCurrentStackVariablesType(variables);

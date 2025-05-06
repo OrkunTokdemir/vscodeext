@@ -227,6 +227,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   readonly mainQmlThreadId = 1;
   private _sendBuffer: Packet[] = [];
   private _sequence = -1;
+  private _thisReference = -1;
   private readonly _msgClient: DebugMessageClient | undefined;
   private readonly _startMode: DebuggerStartMode =
     DebuggerStartMode.AttachToQmlServer;
@@ -271,6 +272,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     this._msgClient.message((message: IMessageType) => {
       QmlEngine.appendDebugOutput(message);
     });
+  }
+  get thisReference() {
+    return this._thisReference;
+  }
+  set thisReference(ref: number) {
+    this._thisReference = ref;
   }
   set onShutdownEngine(cb: () => void) {
     this._onShutdownEngine = cb;
@@ -753,19 +760,23 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     dapScope.namedVariables = scope.object.value;
     return dapScope;
   }
-  async getThisVariables() {
+  async getThisVariable() {
     const exp = 'this';
     const response = await this.evaluate(exp);
     if (!response || !response.success) {
       return undefined;
     }
+    const rawThisVariable = response.body;
+    rawThisVariable.name = 'this';
+    const thisVariable = QmlEngine.generateDapVariable(rawThisVariable);
+    return thisVariable;
     // Lookup the variables recursively
-    const variables = response.body.properties;
-    if (!variables) {
-      return undefined;
-    }
-    const retVariables: DebugProtocol.Variable[] = [];
-    return retVariables;
+    // const variables = response.body.properties;
+    // if (!variables) {
+    //   return undefined;
+    // }
+    // const retVariables: DebugProtocol.Variable[] = [];
+    // return retVariables;
   }
   // async handleEvaluateExpression(response: QmlEvaluateResponse) {
   //   //    { "seq"         : <number>,
@@ -847,6 +858,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     dapVariable.value = value;
     if (variable.type === 'object') {
+      dapVariable.variablesReference = variable.handle;
       dapVariable.namedVariables = variable.value as number;
       if (dapVariable.namedVariables !== 0 && variable.ref !== undefined) {
         dapVariable.variablesReference = variable.ref + 1;
