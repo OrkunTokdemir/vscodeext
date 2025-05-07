@@ -341,25 +341,44 @@ export class QmlDebugSession extends LoggingDebugSession {
         throw new Error('QML engine not initialized');
       }
       logger.info('Variables request:', JSON.stringify(args));
-      const thisIncluded =
-        args.variablesReference !== this._qmlEngine.thisReference;
+      const firstTime = this._qmlEngine.thisReference === -1;
+      const expandingThis =
+        !firstTime && args.variablesReference === this._qmlEngine.thisReference;
+      const includeThis = (engine: QmlEngine) => {
+        const refs = engine.refs;
+        if (firstTime) {
+          return true;
+        }
+        if (refs.has(args.variablesReference - 1)) {
+          return false;
+        }
+        return args.variablesReference !== engine.thisReference;
+      };
+
       let variablesReference = args.variablesReference;
-      if (thisIncluded) {
+      if (!expandingThis) {
         variablesReference = variablesReference - 1;
       }
-      const variables = await this._qmlEngine.lookup(variablesReference);
-      if (variables === undefined) {
-        throw new Error('Variables are undefined');
-      }
-      if (thisIncluded) {
+      const variables: DebugProtocol.Variable[] = [];
+      // Always add "this" as the first variable
+      if (includeThis(this._qmlEngine)) {
         const thisVariable = await this._qmlEngine.getThisVariable();
         if (thisVariable) {
           this._qmlEngine.thisReference = thisVariable.variablesReference;
           variables.push(thisVariable);
         }
       }
+      const lookUpvariables = await this._qmlEngine.lookup(variablesReference);
+      // Sort the variables by name
+      if (lookUpvariables) {
+        lookUpvariables.sort((a, b) => a.name.localeCompare(b.name));
+        variables.push(...lookUpvariables);
+      }
 
-      // this._qmlEngine.setCurrentStackVariablesType(variables);
+      if (variables.length === 0) {
+        throw new Error('Variables are undefined');
+      }
+
       response.body = {
         variables: variables
       };

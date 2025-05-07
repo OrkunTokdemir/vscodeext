@@ -167,7 +167,7 @@ interface QmlSetBreakpointResponse
 }
 
 interface QmlVariable {
-  handle: number;
+  handle?: number;
   name?: string;
   type: string;
   value: unknown;
@@ -221,6 +221,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     unknown
   >();
   private readonly _currentlyLookingUp: LookUpItems = new Set<number>();
+  private readonly _refs = new Set<number>();
   private readonly _breakpointsSync = new Map<number, QmlBreakpoint>();
   private readonly _breakpointsTemp = new Array<string>();
   // private readonly _currentStackVariableTypes = new Map<string, string>();
@@ -539,19 +540,6 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     return this.handleLookup(result);
   }
-  // setCurrentStackVariablesType(variables: DebugProtocol.Variable[]) {
-  //   this._currentStackVariableTypes.clear();
-  //   variables.forEach((variable) => {
-  //     if (variable.variablesReference) {
-  //       if (variable.type) {
-  //         this._currentStackVariableTypes.set(
-  //           variable.variablesReference.toString(),
-  //           variable.type
-  //         );
-  //       }
-  //     }
-  //   });
-  // }
   private static convertScopeName(type: number) {
     switch (type) {
       case -1:
@@ -756,7 +744,11 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     );
 
     dapScope.presentationHint = QmlEngine.convertScopeType(scope.type);
-    dapScope.variablesReference = scope.object.handle + 1;
+    if (scope.object.handle !== undefined) {
+      dapScope.variablesReference = scope.object.handle + 1;
+    } else if (scope.object.ref !== undefined) {
+      dapScope.variablesReference = scope.object.ref + 1;
+    }
     dapScope.namedVariables = scope.object.value;
     return dapScope;
   }
@@ -769,14 +761,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     const rawThisVariable = response.body;
     rawThisVariable.name = 'this';
     const thisVariable = QmlEngine.generateDapVariable(rawThisVariable);
+    if (!thisVariable) {
+      return undefined;
+    }
     return thisVariable;
-    // Lookup the variables recursively
-    // const variables = response.body.properties;
-    // if (!variables) {
-    //   return undefined;
-    // }
-    // const retVariables: DebugProtocol.Variable[] = [];
-    // return retVariables;
   }
   // async handleEvaluateExpression(response: QmlEvaluateResponse) {
   //   //    { "seq"         : <number>,
@@ -789,6 +777,10 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
   //   //    }
 
   // }
+  private clearRefs() {
+    this._refs.clear();
+    this._thisReference = -1;
+  }
   async continueDebugging(action: StepAction) {
     //    { "seq"       : <number>,
     //      "type"      : "request",
@@ -806,6 +798,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     } else if (action === StepAction.Next) {
       cmd.arg(STEPACTION, NEXT);
     }
+    this.clearRefs();
 
     const task = new Promise<QmlContinueResponse>((resolve) => {
       this.runCommand(cmd, (debuggerResponse: QmlContinueResponse) => {
@@ -814,6 +807,9 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       });
     });
     return task;
+  }
+  get refs() {
+    return this._refs;
   }
   static convertQmlTypeToValue(variable: QmlVariable) {
     if (variable.type === 'object') {
@@ -837,12 +833,8 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     return undefined; // Ensure a return value for unsupported types
   }
   private static generateDapVariable(variable: QmlVariable) {
-    const name = variable.name;
-    if (!name) {
-      return undefined;
-    }
     const dapVariable: DebugProtocol.Variable = {
-      name: name,
+      name: variable.name ?? '',
       type: variable.type,
       value: '',
       variablesReference: 0,
@@ -858,7 +850,9 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     }
     dapVariable.value = value;
     if (variable.type === 'object') {
-      dapVariable.variablesReference = variable.handle;
+      if (variable.handle !== undefined) {
+        dapVariable.variablesReference = variable.handle;
+      }
       dapVariable.namedVariables = variable.value as number;
       if (dapVariable.namedVariables !== 0 && variable.ref !== undefined) {
         dapVariable.variablesReference = variable.ref + 1;
@@ -880,12 +874,12 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
 
     const body = response.body;
     const retVariables: DebugProtocol.Variable[] = [];
-    const IsOKToShow = (variable: QmlVariable) => {
-      if (variable.type === 'function') {
-        return false;
-      }
-      return true;
-    };
+    // const IsOKToShow = (variable: QmlVariable) => {
+    //   if (variable.type === 'function') {
+    //     return false;
+    //   }
+    //   return true;
+    // };
     const variables = Object.values(body);
     for (const variable of variables) {
       const subVariables = variable.properties;
@@ -893,14 +887,22 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
         continue;
       }
       for (const subVar of subVariables) {
-        const handle = subVar.handle;
-        this._currentlyLookingUp.delete(handle);
-        if (IsOKToShow(subVar)) {
-          const dapVar = QmlEngine.generateDapVariable(subVar);
-          if (dapVar) {
-            retVariables.push(dapVar);
-          }
+        let handle = -1;
+        if (subVar.handle !== undefined) {
+          handle = subVar.handle;
+        } else if (subVar.ref !== undefined) {
+          handle = subVar.ref;
         }
+        if (handle !== -1) {
+          this._currentlyLookingUp.delete(handle);
+          this._refs.add(handle);
+        }
+        // if (IsOKToShow(subVar)) {
+        const dapVar = QmlEngine.generateDapVariable(subVar);
+        if (dapVar) {
+          retVariables.push(dapVar);
+        }
+        // }
       }
     }
     return retVariables;
