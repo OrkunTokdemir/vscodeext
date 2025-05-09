@@ -344,8 +344,8 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
       true,
       bp.line,
       0,
-      '',
-      0
+      bp.condition ?? undefined,
+      bp.hitCount ?? 0
     );
     const breakpointId = response.body.breakpoint;
     if (breakpointId) {
@@ -379,7 +379,7 @@ export class QmlEngine extends QmlDebugClient implements IQmlDebugClient {
     enabled: boolean,
     line: number,
     column: number,
-    condition: string,
+    condition: string | undefined,
     ignoreCount: number
   ) {
     //    { "seq"       : <number>,

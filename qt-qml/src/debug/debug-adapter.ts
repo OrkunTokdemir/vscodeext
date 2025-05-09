@@ -54,6 +54,9 @@ export interface QmlBreakpoint {
   filename: string;
   line: number;
   state: BreakpointState;
+  hitCount?: number | undefined;
+  condition?: string | undefined;
+  logMessage?: string | undefined;
 }
 
 export class QmlDebugSession extends LoggingDebugSession {
@@ -65,13 +68,20 @@ export class QmlDebugSession extends LoggingDebugSession {
 
     logger.info('Creating debug session for session:', session.id);
   }
-  findBreakpoint(filename: string, line: number): QmlBreakpoint | undefined {
+  findBreakpoint(
+    filename: string,
+    sourceBreakpoint: DebugProtocol.SourceBreakpoint,
+    predicate: (
+      sourceBreakpoint: DebugProtocol.SourceBreakpoint,
+      breakpoint: QmlBreakpoint
+    ) => boolean
+  ): QmlBreakpoint | undefined {
     const breakpoints = this._breakpoints.get(filename);
     if (!breakpoints) {
       return undefined;
     }
     for (const breakpoint of breakpoints) {
-      if (breakpoint.line === line) {
+      if (predicate(sourceBreakpoint, breakpoint)) {
         return breakpoint;
       }
     }
@@ -117,17 +127,35 @@ export class QmlDebugSession extends LoggingDebugSession {
       const breakpointstoRemove: QmlBreakpoint[] = [];
       const breakpointsToAdd: QmlBreakpoint[] = [];
       const sourceBreakpoints = args.breakpoints ?? [];
+      const isSameBreakpoint = (
+        sourceBreakpoint: DebugProtocol.SourceBreakpoint,
+        breakpoint: QmlBreakpoint
+      ) => {
+        return (
+          sourceBreakpoint.line === breakpoint.line &&
+          sourceBreakpoint.condition === breakpoint.condition &&
+          sourceBreakpoint.logMessage === breakpoint.logMessage &&
+          sourceBreakpoint.hitCondition === breakpoint.hitCount
+        );
+      };
       // check if current breakpoints are the same as the new ones
       for (const sourceBreakpoint of sourceBreakpoints) {
         const found = this.findBreakpoint(
           args.source.path,
-          sourceBreakpoint.line
+          sourceBreakpoint,
+          isSameBreakpoint
         );
         if (!found) {
           const newBreakpoint: QmlBreakpoint = {
             filename: path.basename(args.source.path),
             line: sourceBreakpoint.line,
-            state: BreakpointState.BreakpointNew
+            state: BreakpointState.BreakpointNew,
+            condition: sourceBreakpoint.condition,
+            logMessage: sourceBreakpoint.logMessage,
+            hitCount: parseInt(
+              sourceBreakpoint.hitCondition ?? '0',
+              10
+            )
           };
           const currentSourceBreakpoints = this._breakpoints.get(
             args.source.path
@@ -141,8 +169,8 @@ export class QmlDebugSession extends LoggingDebugSession {
         }
       }
       for (const breakpoint of this._breakpoints.get(args.source.path) ?? []) {
-        const found = sourceBreakpoints.find(
-          (sourceBreakpoint) => sourceBreakpoint.line === breakpoint.line
+        const found = sourceBreakpoints.find((sourceBreakpoint) =>
+          isSameBreakpoint(sourceBreakpoint, breakpoint)
         );
         if (!found) {
           breakpointstoRemove.push(breakpoint);
@@ -219,6 +247,8 @@ export class QmlDebugSession extends LoggingDebugSession {
     logger.info('Initialize request:', JSON.stringify(args));
     response.body = {};
     response.body.supportsSetVariable = true;
+    response.body.supportsConditionalBreakpoints = true;
+    response.body.supportsHitConditionalBreakpoints = true;
     this.sendResponse(response);
   }
   protected override threadsRequest(
@@ -277,7 +307,7 @@ export class QmlDebugSession extends LoggingDebugSession {
         const message = 'Cannot evaluate expression "' + args.expression + '"';
         response.success = false;
         response.message = message;
-        void vscode.window.showErrorMessage(message);
+        logger.warn(message);
         return;
       }
       const value = QmlEngine.convertQmlTypeToValue(result.body);
