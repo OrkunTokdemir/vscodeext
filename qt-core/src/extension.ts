@@ -29,6 +29,7 @@ import { checkQtpathsInEnvPath, registerQtByQtpaths } from '@/qtpaths';
 import { checkVcpkg } from '@/vcpkg';
 import { NewItemPanel } from '@/webview/new-item/panel';
 import { registerQrcEditorProvider } from '@/webview/qrc-editor/editor-provider';
+import { TSEditorProvider } from '@/editors/ts/ts-editor';
 
 const logger = createLogger('extension');
 
@@ -74,6 +75,7 @@ export async function activate(context: vscode.ExtensionContext) {
       NewItemPanel.render(context);
     })
   );
+  context.subscriptions.push(TSEditorProvider.register(context));
 
   registerQrcEditorProvider(context);
 

@@ -101,7 +101,7 @@ export class UIEditorProvider implements vscode.CustomTextEditorProvider {
         preserveFocus: false
       }
     );
-    telemetry.sendAction('openWithTextEditor');
+    telemetry.sendAction('openWithUITextEditor');
     logger.info(
       'File opened with text editor in current tab: ' + document.uri.fsPath
     );

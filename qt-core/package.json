@@ -84,6 +84,19 @@
     ],
     "customEditors": [
       {
+        "viewType": "qt-core.tsEditor",
+        "displayName": "Qt TS Editor",
+        "extensions": [
+          ".ts"
+        ],
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.ts"
+          }
+        ]
+      },
+      {
         "viewType": "qt-core.qrcEditor",
         "displayName": "QRC editor",
         "extensions": [
