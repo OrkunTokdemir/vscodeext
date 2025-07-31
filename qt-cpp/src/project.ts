@@ -70,16 +70,70 @@ export class CppProject implements Project {
     this._buildDir = buildDir;
 
     if (this._cmakeProject) {
+      const useCMakePresets = this._cmakeProject.useCMakePresets;
+      logger.info(
+        `useCMakePresets: ${useCMakePresets} for project: ${this._folder.uri.fsPath}`
+      );
       const onSelectedConfigurationChangedHandler =
         this._cmakeProject.onSelectedConfigurationChanged(
           async (configurationType: cmakeApi.ConfigurationType) => {
+            logger.info(
+              `Selected configuration changed: ${configurationType} for project: ${this._folder.uri.fsPath}`
+            );
+            logger.info(
+              `useCMakePresets: ${this._cmakeProject?.useCMakePresets} for project: ${this._folder.uri.fsPath}`
+            );
             switch (configurationType) {
               case cmakeApi.ConfigurationType.Kit:
                 await this.onKitConfigurationChanged();
                 break;
               case cmakeApi.ConfigurationType.ConfigurePreset:
               case cmakeApi.ConfigurationType.BuildPreset:
-                CppProject.warnUserForPresetUsage();
+                if (this._cmakeProject?.configurePreset) {
+                  logger.info(
+                    'Preset Name: ' + this._cmakeProject.configurePreset.name
+                  );
+                  const name = this._cmakeProject.buildPreset?.name;
+                  logger.info(
+                    'Build Preset Name: ' + (name ? name : 'undefined')
+                  );
+                  const cachedVariables =
+                    this._cmakeProject.configurePreset.cacheVariables;
+                  if (cachedVariables) {
+                    logger.info(
+                      'Cached Variables: ' +
+                        (Object.keys(cachedVariables).length > 0
+                          ? JSON.stringify(cachedVariables)
+                          : 'undefined')
+                    );
+                  } else {
+                    logger.info('Cached Variables: undefined');
+                  }
+                  const toolchain =
+                    this._cmakeProject.configurePreset.toolchainFile;
+                  logger.info(
+                    'Toolchain File: ' + (toolchain ? toolchain : 'undefined')
+                  );
+                  const targets = this._cmakeProject.buildPreset?.targets;
+                  logger.info(
+                    'Build Preset Targets: ' +
+                      (targets && targets.length > 0
+                        ? (targets as string[]).join(', ')
+                        : targets
+                          ? 'undefined'
+                          : targets)
+                  );
+                  const environment =
+                    this._cmakeProject.buildPreset?.environment;
+                  logger.info(
+                    'Build Preset Environment: ' +
+                      (environment && Object.keys(environment).length > 0
+                        ? JSON.stringify(environment)
+                        : environment
+                          ? 'undefined'
+                          : environment)
+                  );
+                }
                 break;
             }
           }

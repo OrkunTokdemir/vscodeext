@@ -26,10 +26,10 @@ function main() {
       stdio: 'inherit'
     });
   }
-  execSync(`npm run ci:${targetExtension}`, {
-    cwd: extensionRoot,
-    stdio: 'inherit'
-  });
+  // execSync(`npm run ci:${targetExtension}`, {
+  //   cwd: extensionRoot,
+  //   stdio: 'inherit'
+  // });
   execSync(`npm run lint:${targetExtension}`, {
     cwd: extensionRoot,
     stdio: 'inherit'
