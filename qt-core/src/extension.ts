@@ -29,7 +29,7 @@ import { checkQtpathsInEnvPath, registerQtByQtpaths } from '@/qtpaths';
 import { checkVcpkg } from '@/vcpkg';
 import { NewItemPanel } from '@/webview/new-item/panel';
 import { registerQrcEditorProvider } from '@/webview/qrc-editor/editor-provider';
-import { TSEditorProvider } from '@/editors/ts/ts-editor';
+import { TSEditorProvider } from '@/webview/ts-editor/editor-provider';
 
 const logger = createLogger('extension');
 

@@ -101,3 +101,10 @@ export const qrc = {
     invalidLang: 'Use a valid language code (de_DE, en_US, de)'
   }
 }
+
+export const ts = {
+  buttons: {
+    OpenInLinguist: 'Open in Linguist',
+    OpenInTextEditor: 'Open in Text Editor'
+  },
+}
