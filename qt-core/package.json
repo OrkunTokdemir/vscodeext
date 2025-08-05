@@ -142,6 +142,21 @@
         }
       },
       {
+        "id": "ts",
+        "configuration": "./res/lang/ts/language-configuration.json",
+        "extensions": [
+          ".ts"
+        ],
+        "firstLine": "^<\\?xml",
+        "filenamePatterns": [
+          "*.ts"
+        ],
+        "icon": {
+          "light": "res/icons/ts-light.svg",
+          "dark": "res/icons/ts-dark.svg"
+        }
+      },
+      {
         "id": "qdoc",
         "configuration": "./res/lang/qdoc/language-configuration.json",
         "extensions": [
@@ -165,6 +180,11 @@
         "language": "qdoc",
         "scopeName": "source.qdoc",
         "path": "./res/lang/qdoc/qdoc.tmLanguage.json"
+      },
+      {
+        "language": "ts",
+        "scopeName": "source.ts",
+        "path": "./res/lang/ts/ts.tmLanguage.json"
       },
       {
         "language": "qrc",
