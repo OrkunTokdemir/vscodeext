@@ -24,6 +24,7 @@ import {
   onAdditionalQtPathsUpdated
 } from '@/installation-root';
 import { coreAPI } from '@/extension';
+import { TSEditorProvider } from './webview/ts-editor/editor-provider';
 
 const logger = createLogger('project');
 
@@ -124,10 +125,63 @@ export class CoreProject implements Project {
 export class CoreProjectManager extends ProjectManager<CoreProject> {
   globalStateManager: GlobalStateManager;
   workspaceFile: vscode.Uri | undefined;
+  openedTSFiles = new Set<string>();
   constructor(override readonly context: vscode.ExtensionContext) {
     super(context, createCoreProject);
     this.globalStateManager = new GlobalStateManager(context);
     this.watchGlobalConfig();
+    vscode.workspace.onDidOpenTextDocument(
+      async (document: vscode.TextDocument) => {
+        // Check if the document includes <!DOCTYPE TS>
+        logger.info(`Language ID for document: ${document.languageId}`);
+        if (
+          document.languageId === 'typescript' &&
+          document.getText().includes('<!DOCTYPE TS')
+        ) {
+          if (!this.openedTSFiles.has(document.uri.fsPath)) {
+            logger.info(
+              `Detected Qt translation file in ${document.uri.fsPath}.`
+            );
+            // Open this file with tsEditor
+            await vscode.commands.executeCommand(
+              'workbench.action.revertAndCloseActiveEditor'
+            );
+            void vscode.commands.executeCommand(
+              'vscode.openWith',
+              document.uri,
+              TSEditorProvider.viewType
+            );
+            this.openedTSFiles.add(document.uri.fsPath);
+          } else {
+            logger.info(
+              `Qt translation file ${document.uri.fsPath} is already opened.`
+            );
+            // get the focus to the already opened editor
+            const editor = vscode.window.visibleTextEditors.find(
+              (e) => e.document.uri.fsPath === document.uri.fsPath
+            );
+            if (editor) {
+              logger.info(
+                `Focusing on already opened editor for ${document.uri.fsPath}.`
+              );
+              // Close the current editor and focus on the existing one
+              await vscode.commands.executeCommand(
+                'workbench.action.closeActiveEditor'
+              );
+              await vscode.window.showTextDocument(
+                editor.document,
+                editor.viewColumn,
+                true
+              );
+            }
+          }
+        }
+      }
+    );
+    vscode.workspace.onDidCloseTextDocument((document: vscode.TextDocument) => {
+      // Remove the document from the openedTSFiles set when closed
+      this.openedTSFiles.delete(document.uri.fsPath);
+    });
 
     this.onProjectAdded((project: CoreProject) => {
       logger.info('Adding project:', project.folder.uri.fsPath);

@@ -27,7 +27,7 @@ export class TSEditorProvider implements vscode.CustomTextEditorProvider {
     this._context = context;
   }
 
-  private static readonly viewType = `${EXTENSION_ID}.tsEditor`;
+  public static readonly viewType = `${EXTENSION_ID}.tsEditor`;
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new TSEditorProvider(context);
     const providerRegistration = vscode.window.registerCustomEditorProvider(
