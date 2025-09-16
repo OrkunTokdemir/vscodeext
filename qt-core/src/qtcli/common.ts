@@ -21,7 +21,7 @@ export const qtcliSubCommands: Record<QtcliAction, string> = {
 export const qtcliExeName = 'qtcli' + OSExeSuffix;
 export const logger = createLogger('qtcli');
 
-export function errorString<T>(e: T) {
+export function errorString(e: unknown) {
   return isError(e) ? e.message : String(e);
 }
 
@@ -55,7 +55,7 @@ export function fallbackWorkingDir(): string {
     if (fsSync.statSync(o).isDirectory()) {
       return o;
     }
-  } catch (e) {
+  } catch {
     return docs;
   }
 
@@ -86,7 +86,7 @@ export async function openUri(uri: vscode.Uri) {
         );
       }
     }
-  } catch (e) {
+  } catch {
     logger.warn('cannot open:', uri.fsPath);
   }
 }
@@ -110,7 +110,7 @@ export async function findPrimaryFileUnder(dir: string) {
         }
       }
     }
-  } catch (e) {
+  } catch {
     return undefined;
   }
 

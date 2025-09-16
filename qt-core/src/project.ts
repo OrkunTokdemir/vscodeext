@@ -105,7 +105,7 @@ export class CoreProject implements Project {
       CoreProjectManager.getWorkspaceFolderAdditionalQtPaths(folder);
     coreAPI?.setValue(folder, AdditionalQtPathsName, additionalQtPaths);
     logger.info(
-      `Setting additional Qt paths for ${folder.uri.fsPath} to: ${additionalQtPaths.join(', ')}`
+      `Setting additional Qt paths for ${folder.uri.fsPath} to: ${additionalQtPaths.map((p) => JSON.stringify(p)).join(', ')}`
     );
     logger.info('Config values initialized for:', folder.uri.fsPath);
     if (!isEmpty(additionalQtPaths)) {

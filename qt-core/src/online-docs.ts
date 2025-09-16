@@ -116,7 +116,7 @@ async function searchWithEngine(
     return;
   }
   if (!response?.ok) {
-    throw new Error('Network response: ' + response?.status);
+    throw new Error('Network response: ' + String(response?.status));
   }
 
   return (await response.json()) as SearchResponse;

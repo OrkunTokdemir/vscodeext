@@ -83,10 +83,10 @@ export class QtInfo {
 
 export interface CoreAPI {
   notify(config: QtWorkspaceConfigMessage): void;
-  getValue<T>(
+  getValue(
     folder: vscode.WorkspaceFolder | string,
     key: string
-  ): T | undefined;
+  ): unknown;
   setValue(
     folder: vscode.WorkspaceFolder | string,
     key: string,
