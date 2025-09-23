@@ -6,14 +6,14 @@ import * as vscode from 'vscode';
 import {
   CoreAPI,
   getCoreApi,
-  createLogger,
   initLogger,
   QtWorkspaceConfigMessage,
   QtInsRootConfigName,
   AdditionalQtPathsName,
   GlobalWorkspace,
   QtAdditionalPath,
-  telemetry
+  telemetry,
+  createModuleLogger
 } from 'qt-lib';
 import { registerMinGWgdbCommand } from '@cmd/mingw-gdb';
 import { registerResetCommand } from '@cmd/reset-qt-ext';
@@ -39,7 +39,7 @@ export let coreAPI: CoreAPI | undefined;
 
 let taskProvider: vscode.Disposable | undefined;
 
-const logger = createLogger('extension');
+const logger = createModuleLogger(__filename);
 
 export async function activate(context: vscode.ExtensionContext) {
   await vscode.extensions.getExtension('ms-vscode.cmake-tools')?.activate();

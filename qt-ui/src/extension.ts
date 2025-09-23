@@ -9,16 +9,16 @@ import {
   QtWorkspaceConfigMessage,
   QtWorkspaceType,
   ProjectManager,
-  createLogger,
   initLogger,
-  telemetry
+  telemetry,
+  createModuleLogger
 } from 'qt-lib';
 import { UIEditorProvider } from '@/editors/ui/ui-editor';
 import { createUIProject, UIProject } from '@/project';
 import { EXTENSION_ID } from '@/constants';
 import { openWidgetDesigner } from '@/commands';
 
-const logger = createLogger('extension');
+const logger = createModuleLogger(__filename);
 
 export let projectManager: ProjectManager<UIProject>;
 export let coreAPI: CoreAPI | undefined;
