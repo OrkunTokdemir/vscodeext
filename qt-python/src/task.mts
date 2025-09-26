@@ -5,11 +5,11 @@ import _ from 'lodash';
 import * as vscode from 'vscode';
 
 import { IsWindows, createLogger } from 'qt-lib';
-import { TaskId, type ProjectToolAction } from './types';
-import { PySideEnv } from './env';
-import { PySideProject } from './project';
-import { projectManager } from './extension';
-import * as consts from './constants';
+import { TaskId, type ProjectToolAction } from './types.mjs';
+import { PySideEnv } from './env.mjs';
+import { PySideProject } from './project.mjs';
+import { projectManager } from './extension.mjs';
+import * as consts from './constants.mjs';
 
 const logger = createLogger('task');
 

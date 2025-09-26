@@ -4,9 +4,9 @@
 import * as vscode from 'vscode';
 
 import { ProjectManager, createLogger, QtWorkspaceType } from 'qt-lib';
-import { PySideProject } from './project';
-import { pyApi, coreApi } from './extension';
-import * as consts from '@/constants';
+import { PySideProject } from './project.mjs';
+import { pyApi, coreApi } from './extension.mjs';
+import * as consts from '@/constants.mjs';
 
 type Context = vscode.ExtensionContext;
 

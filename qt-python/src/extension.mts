@@ -8,10 +8,10 @@ import {
 } from '@vscode/python-extension';
 
 import { CoreAPI, getCoreApi, createLogger, initLogger } from 'qt-lib';
-import { PySideTaskProvider } from './task';
-import { PySideDebugConfigProvider } from './debug';
-import { PySideProjectManager } from './project-manager';
-import * as consts from '@/constants';
+import { PySideTaskProvider } from './task.mjs';
+import { PySideDebugConfigProvider } from './debug.mjs';
+import { PySideProjectManager } from './project-manager.mjs';
+import * as consts from '@/constants.mjs';
 
 const logger = createLogger('extension');
 

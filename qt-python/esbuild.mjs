@@ -19,8 +19,8 @@ const extensionConfig = {
   mainFields: ['module', 'main'],
   tsconfig: './tsconfig.json',
   format: 'cjs',
-  entryPoints: ['./src/extension.ts'],
-  outfile: './out/extension.js',
+  entryPoints: ['./src/extension.mts'],
+  outfile: './out/extension.mjs',
   external: ['vscode']
 };
 

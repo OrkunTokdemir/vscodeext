@@ -9,11 +9,11 @@ import { parse } from 'smol-toml';
 import { PythonExtension as PyApi } from '@vscode/python-extension';
 
 import { Project, createLogger } from 'qt-lib';
-import { PySideEnv } from './env';
-import { PySideProjectInfo } from './types';
-import { coreApi } from './extension';
+import { PySideEnv } from './env.mjs';
+import { PySideProjectInfo } from './types.mjs';
+import { coreApi } from './extension.mjs';
 
-import * as consts from './constants';
+import * as consts from './constants.mjs';
 
 type Folder = vscode.WorkspaceFolder;
 type Context = vscode.ExtensionContext;

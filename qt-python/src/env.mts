@@ -4,8 +4,8 @@
 import * as path from 'path';
 import { Environment } from '@vscode/python-extension';
 
-import * as utils from './utils';
-import * as consts from './constants';
+import * as utils from './utils.js';
+import * as consts from './constants.mjs';
 
 export class PySideEnv {
   private readonly _pyEnv: Environment | undefined;
