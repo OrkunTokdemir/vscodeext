@@ -24,6 +24,7 @@ jobs:
         with:
           working-directory: ./qt-cli
           deploy-target: ./qt-core/res/qtcli
+          enable-upload: true
 
       - name: Sign qtcli
         uses: ./.github/actions/sign-qtcli
