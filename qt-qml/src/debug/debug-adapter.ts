@@ -664,15 +664,27 @@ export class QmlDebugSession extends LoggingDebugSession {
         };
       }
       if (IsWindows) {
+        const env = { ...process.env };
+        const qpa = await vscode.commands.executeCommand(
+          `qt-cpp.QT_QPA_PLATFORM_PLUGIN_PATH`
+        );
+        if (qpa) {
+          env.QT_QPA_PLATFORM_PLUGIN_PATH = qpa as string;
+        }
+        const qmlImports = await vscode.commands.executeCommand(
+          `qt-cpp.QML_IMPORT_PATH`
+        );
+        if (qmlImports) {
+          env.QML_IMPORT_PATH = qmlImports as string;
+        }
         const dllDirs = await vscode.commands.executeCommand(`qt-cpp.qtDir`);
         if (dllDirs !== undefined) {
-          const env = { ...process.env };
           env.PATH = `${dllDirs as string};${env.PATH}`;
-          options = {
-            ...options,
-            env: env
-          };
         }
+        options = {
+          ...options,
+          env: env
+        };
       }
       this._process = spawn(command, options);
       if (!this._process.stdout || !this._process.stderr) {
