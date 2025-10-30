@@ -66,15 +66,21 @@ func (g *Generator) DryRun(on bool) *Generator {
 }
 
 func (g *Generator) Render() *Result {
+	g.name = strings.TrimSpace(g.name)
+	g.workingDir = strings.TrimSpace(g.workingDir)
+
 	// input validation
-	out := Validate(ValidatorIn{
+	issues := Validate(ValidatorIn{
 		Name:       g.name,
 		WorkingDir: g.workingDir,
 		TypeId:     g.preset.GetTypeId(),
 	})
 
-	if out.HasError() {
-		return NewErrorResult(*out.Error)
+	if issues.HasError() {
+		return NewErrorResult(common.Error{
+			Message: common.InputHasIssues,
+			Details: issues,
+		})
 	}
 
 	// prep.
@@ -108,7 +114,7 @@ func (g *Generator) Render() *Result {
 		}
 	}
 
-	return NewResult(result)
+	return NewOkayResult(result)
 }
 
 func (g *Generator) prepContext() error {
@@ -273,11 +279,17 @@ func (g *Generator) createOutputFileRel(
 		return path.Base(file.In), nil
 	}
 
-	return util.NewTemplateExpander().
+	out, err := util.NewTemplateExpander().
 		Name(file.In).
 		Data(g.context.data).
 		Funcs(g.context.funcs).
 		RunString(file.Out)
+
+	if err != nil {
+		return out, err
+	}
+
+	return util.NormalizeFileExt(out, path.Ext(file.In)), nil
 }
 
 func (g *Generator) evalWhenCondition(file common.TemplateItem) (bool, error) {

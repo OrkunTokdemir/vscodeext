@@ -1,14 +1,17 @@
 {
   "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "module": "commonjs",
+    "module": "node16",
+    "moduleResolution": "node16",
     "target": "ES2020",
     "types": ["node"],
     "outDir": "out",
-    "lib": ["ES2020", "DOM"],
+    "lib": ["ES2020"],
     "sourceMap": true,
-    "rootDirs": ["src"],
+    "rootDirs": ["src", "test"],
     "strict": true /* enable all strict type-checking options */,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
@@ -27,5 +30,7 @@
       "@util/*": ["src/util/*"]
     }
   },
-  "include": ["src/**/*"]
+  //"exclude": ["node_modules", ".vscode-test", "src/test/**/*"],
+  "exclude": ["node_modules", ".vscode-test"],
+  "include": ["src/**/*", "test/**/*"]
 }

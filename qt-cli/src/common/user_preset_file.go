@@ -56,6 +56,10 @@ func (f *UserPresetFile) Open() error {
 		return err
 	}
 
+	for i := range f.contents.Items {
+		f.contents.Items[i].ComputeDerivedFields()
+	}
+
 	return nil
 }
 
@@ -143,6 +147,14 @@ func (f *UserPresetFile) Save() error {
 	}
 
 	return nil
+}
+
+func (f *UserPresetFile) Replace(data PresetData) error {
+	if err := f.Remove(data.Name); err != nil {
+		return err
+	}
+
+	return f.Add(data)
 }
 
 func (f *UserPresetFile) Remove(name string) error {

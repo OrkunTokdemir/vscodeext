@@ -11,11 +11,14 @@ import { spawnSync } from 'child_process';
 import { createLogger, isError, OSExeSuffix } from 'qt-lib';
 
 export enum QtcliAction {
-  NewFile,
-  NewProject
+  ServerControl
 }
 
-export const QtcliExeName = 'qtcli' + OSExeSuffix;
+export const qtcliSubCommands: Record<QtcliAction, string> = {
+  [QtcliAction.ServerControl]: 'server'
+};
+
+export const qtcliExeName = 'qtcli' + OSExeSuffix;
 export const logger = createLogger('qtcli');
 
 export function errorString<T>(e: T) {
@@ -28,16 +31,6 @@ export function isValidQtcliPath(qtcliPath: string): boolean {
   });
 
   return res.status === 0;
-}
-
-export function isValidNewName(name: string): boolean {
-  const o = name.trim();
-  if (o.length === 0) {
-    return false;
-  }
-
-  const regex = /^[a-zA-Z0-9-_]+$/;
-  return regex.test(o);
 }
 
 export function fallbackWorkingDir(): string {
@@ -75,26 +68,26 @@ export async function openUri(uri: vscode.Uri) {
         { uri }
       );
 
-      const disposable = vscode.workspace.onDidChangeWorkspaceFolders(
-        async () => {
-          const fileToOpen = await findPrimaryFileUnder(uri.fsPath);
-          if (fileToOpen) {
-            void vscode.commands.executeCommand(
-              'vscode.open',
-              vscode.Uri.file(fileToOpen)
-            );
-          }
-
-          disposable.dispose();
-        }
-      );
+      const fileToOpen = await findPrimaryFileUnder(uri.fsPath);
+      if (fileToOpen) {
+        void vscode.commands.executeCommand(
+          'vscode.open',
+          vscode.Uri.file(fileToOpen)
+        );
+      }
     }
   } catch (e) {
     logger.warn('cannot open:', uri.fsPath);
   }
 }
 
-export async function findPrimaryFileUnder(dir: string) {
+export async function openFilesUnder(baseDir: string, names: string[]) {
+  for (const name of names) {
+    await openUri(vscode.Uri.file(path.join(baseDir, name)));
+  }
+}
+
+async function findPrimaryFileUnder(dir: string) {
   try {
     const patterns = [/Main.qml$/i, /main\.cpp$/i, /CMakeLists.txt$/];
     const files = await fs.readdir(dir);

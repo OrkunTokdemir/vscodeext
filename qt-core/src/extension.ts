@@ -6,10 +6,8 @@ import { isEmpty } from 'lodash';
 
 import {
   createLogger,
-  GlobalWorkspace,
+  CoreKey,
   initLogger,
-  QtInsRootConfigName,
-  AdditionalQtPathsName,
   telemetry,
   createColorProvider
 } from 'qt-lib';
@@ -20,14 +18,21 @@ import {
   checkDefaultQtInsRootPath,
   getCurrentGlobalAdditionalQtPaths,
   getCurrentGlobalQtInstallationRoot,
-  registerQt
+  registerRegisterQtByPathCommand,
+  registerRegisterQtCommand
 } from '@/installation-root';
 import { EXTENSION_ID } from '@/constants';
 import { createCoreProject, CoreProjectManager } from '@/project';
-import { resetCommand } from '@/reset';
-import { registerQtByQtpaths } from '@/qtpaths';
-import { newFileCommand, newProjectCommand } from '@/qtcli/commands';
+import {
+  registerOpenSettingsCommand,
+  reportIssueCommand,
+  resetCommand
+} from '@/small-commands';
+import { checkQtpathsInEnvPath, registerQtByQtpaths } from '@/qtpaths';
 import { checkVcpkg } from '@/vcpkg';
+import { registerCreateNewItemPanelCommand } from '@/webview/new-item/panel';
+import { registerQrcEditorProvider } from '@/webview/qrc-editor/editor-provider';
+import { registerOpenInLinguistCommand } from '@/translation';
 
 const logger = createLogger('extension');
 
@@ -48,33 +53,31 @@ export async function activate(context: vscode.ExtensionContext) {
       projectManager.addProject(project);
     }
   }
-  context.subscriptions.push(...registerDocumentationCommands());
-  context.subscriptions.push(registerSetRecommendedSettingsCommand());
-  context.subscriptions.push(resetCommand());
-  context.subscriptions.push(registerQtByQtpaths());
-  context.subscriptions.push(newFileCommand(context));
-  context.subscriptions.push(newProjectCommand(context));
+
   context.subscriptions.push(
-    vscode.commands.registerCommand(`${EXTENSION_ID}.openSettings`, () => {
-      telemetry.sendAction('openSettings');
-      void vscode.commands.executeCommand(
-        'workbench.action.openSettings',
-        `@ext:theqtcompany.qt-cpp @ext:theqtcompany.qt-qml @ext:theqtcompany.qt-ui @ext:theqtcompany.${EXTENSION_ID}`
-      );
-    })
+    ...registerDocumentationCommands(),
+    registerSetRecommendedSettingsCommand(),
+    resetCommand(),
+    registerQtByQtpaths(),
+    registerOpenSettingsCommand(),
+    registerRegisterQtCommand(),
+    registerRegisterQtByPathCommand(),
+    registerOpenInLinguistCommand(),
+    registerCreateNewItemPanelCommand(context),
+    vscode.languages.registerColorProvider('qss', createColorProvider()),
+    reportIssueCommand()
   );
-  context.subscriptions.push(
-    vscode.commands.registerCommand(`${EXTENSION_ID}.registerQt`, registerQt)
-  );
-  context.subscriptions.push(
-    vscode.languages.registerColorProvider('qss', createColorProvider())
-  );
+
+  registerQrcEditorProvider(context);
+  await enableQtTsFileSupport(context);
 
   telemetry.sendEvent(`activated`);
 
+  coreAPI = new CoreAPIImpl();
+
   checkDefaultQtInsRootPath();
   checkVcpkg();
-  coreAPI = new CoreAPIImpl();
+  checkQtpathsInEnvPath();
   initCoreValues();
   return coreAPI;
 }
@@ -87,14 +90,14 @@ export function deactivate() {
 
 export function initCoreValues() {
   coreAPI?.setValue(
-    GlobalWorkspace,
-    QtInsRootConfigName,
+    CoreKey.GLOBAL_WORKSPACE,
+    CoreKey.QT_INSTALLATION_ROOT,
     getCurrentGlobalQtInstallationRoot()
   );
   const currentAdditionalQtPaths = getCurrentGlobalAdditionalQtPaths();
   coreAPI?.setValue(
-    GlobalWorkspace,
-    AdditionalQtPathsName,
+    CoreKey.GLOBAL_WORKSPACE,
+    CoreKey.ADDITIONAL_QT_PATHS,
     currentAdditionalQtPaths
   );
   if (!isEmpty(currentAdditionalQtPaths)) {
@@ -104,4 +107,39 @@ export function initCoreValues() {
   for (const project of projectManager.getProjects()) {
     project.initConfigValues();
   }
+}
+
+async function enableQtTsFileSupport(context: vscode.ExtensionContext) {
+  const checker = async (doc: vscode.TextDocument) => {
+    // <?xml version="1.0" encoding="utf-8"?>
+    // <!DOCTYPE TS>
+    // <TS version="2.1" language="en_US">
+    //   <context> ...
+    //   </context>
+    // </TS>
+
+    const languageId = 'qt-ts'; // contributes > languages
+    const maxLinesToCheck = 3;
+    const rootTagOpening = '<TS ';
+
+    if (!doc.fileName.endsWith('.ts') || doc.languageId === languageId) {
+      return;
+    }
+
+    for (let i = 0; i < Math.min(maxLinesToCheck, doc.lineCount); i++) {
+      if (doc.lineAt(i).text.startsWith(rootTagOpening)) {
+        await vscode.languages.setTextDocumentLanguage(doc, languageId);
+        break;
+      }
+    }
+  };
+
+  for (const doc of vscode.workspace.textDocuments) {
+    await checker(doc);
+  }
+
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenTextDocument(checker),
+    vscode.workspace.onDidSaveTextDocument(checker)
+  );
 }

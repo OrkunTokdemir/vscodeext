@@ -11,6 +11,8 @@ import (
 	"maps"
 	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -154,6 +156,26 @@ func DirExists(path string) bool {
 	return info.IsDir()
 }
 
+func HasValidWindowsDrive(path string) bool {
+	if len(path) < 2 || path[1] != ':' {
+		return false
+	}
+
+	driveRoot := path[:2] + `\`
+	info, err := os.Stat(driveRoot)
+	return err == nil && info.IsDir()
+}
+
+func IsWindowsReservedName(name string) bool {
+	pattern := "(?i)^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$"
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return false
+	}
+
+	return re.MatchString(name)
+}
+
 func SendSigTermOrKill(pid int) error {
 	process, err := os.FindProcess(pid)
 	if err != nil {
@@ -169,4 +191,26 @@ func SendSigTermOrKill(pid int) error {
 
 func CreatePresetUniqueId(name string) string {
 	return fmt.Sprintf("%010d", crc32.ChecksumIEEE([]byte(name)))
+}
+
+var multiDotRegex = regexp.MustCompile(`\.{2,}`)
+
+func NormalizeFileExt(fileName, fallbackExt string) string {
+	fileName = multiDotRegex.ReplaceAllString(fileName, ".")
+	ext := filepath.Ext(fileName)
+	base := strings.TrimSuffix(fileName, ext)
+	if ext == "." {
+		ext = ""
+	}
+
+	effectiveName := base + ext
+	if fallbackExt == "" || fallbackExt == "." || ext != "" {
+		return effectiveName
+	}
+
+	if !strings.HasPrefix(fallbackExt, ".") {
+		fallbackExt = "." + fallbackExt
+	}
+
+	return effectiveName + fallbackExt
 }

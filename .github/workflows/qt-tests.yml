@@ -1,0 +1,167 @@
+name: Qt VS Code Ext Tests
+
+# Triggers: run automatically on every PR,
+# and also allow manual runs from the Actions tab
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+        debug:
+          description: 'Enable test debug mode (QT_TEST_DEBUG): 0=quiet, 1=extra info, 2=show all'
+          required: false
+          default: '0'
+
+jobs:
+  tests:
+    # Job name will show up in GitHub UI as "tests (ubuntu-latest)" etc.
+    name: tests (${{ matrix.os }})
+    # Run this job on Linux, macOS, and Windows
+    runs-on: ${{ matrix.os }}
+    # Default shell for all `run:` commands in this job
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      # Do not cancel other jobs if one platform fails.
+      # This way you see all failures at once.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      QT_VERSION_FOR_TEST: "6.9.0"
+      VSCODE_LOG_LEVEL: error # trace, debug, info, warn, error, off
+      QT_TEST_DEBUG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug || '' }}
+      DBUS_SESSION_BUS_ADDRESS: "disabled:"
+      NO_AT_BRIDGE: "1"
+
+    steps:
+      # Check out your branch code into the runner
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # Set up Node.js
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      # Needed by runTest.mts fallback to download Marketplace extensions
+      - name: Install vsce
+        run: npm i -g @vscode/vsce
+
+      # Install dependencies using package-lock.json
+      - name: Install deps (all packages)
+        run: npm run ci:all_sync
+
+      # Build qt-core so we have a .vsix for tests
+      - name: Build qt-lib first (dependency)
+        run: |
+          npm run compile:qt-lib
+
+      # Ensure qt-core has a qt-cli binary in res/qtcli for tests
+      - name: Build qtcli (host platform)
+        uses: ./.github/actions/build-qtcli
+        with:
+          working-directory: ./qt-cli
+          deploy-target: ./qt-core/res/qtcli
+          skip-upload: 'true'
+
+      # Package qt-core so qt-cpp tests can install its .vsix via getLocalQtCore()
+      - name: Package qt-core (.vsix)
+        run: npm run package:qt-core
+      # Compile other extensions once (runtime build)
+      - name: Compile qt-cpp / qt-ui / qt-qml
+        run: |
+          npm --prefix qt-cpp run compile
+          npm --prefix qt-ui  run compile
+          npm --prefix qt-qml run compile
+
+
+      # Install Qt using a community-maintained action.
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION_FOR_TEST }}
+          host:   ${{ matrix.os == 'windows-latest' && 'windows' ||
+                    matrix.os == 'macos-latest'   && 'mac'      || 'linux' }}
+          target: desktop
+          arch:   ${{ matrix.os == 'windows-latest' && 'win64_msvc2022_64' ||
+                    matrix.os == 'macos-latest'   && 'clang_64'          || 'linux_gcc_64' }}
+          dir: ${{ github.workspace }}
+          cache: true
+
+      - name: Locate Designer and set QT_TEST_QT_ROOT
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${{ github.workspace }}/Qt"
+
+          echo "Tree under $QT_ROOT:"
+          find "$QT_ROOT" -maxdepth 3 -type d -print
+
+          # Look for Designer binaries in the typical places regardless of arch/dir naming
+          DESIGNER="$(/usr/bin/find "$QT_ROOT" -type f \( -name Designer -o -name designer -o -name designer.exe \) \
+                      -path '*/bin/*' -print -quit || true)"
+          echo "looking for Designer under $DESIGNER"
+
+          if [[ -n "$DESIGNER" ]]; then
+            echo "Found Designer at: $DESIGNER"
+            echo "QT_TEST_QT_ROOT=$QT_ROOT" >> $GITHUB_ENV
+          else
+            echo "::error::Designer not found under $QT_ROOT after install."
+            exit 1
+          fi
+
+
+      # Print where Qt was installed for debugging
+      - name: Set Qt root
+        run: |
+            echo "QT_TEST_QT_ROOT=${{ github.workspace }}/Qt" >> $GITHUB_ENV
+            echo "QT_VERSION_FOR_TEST=${QT_VERSION_FOR_TEST}" >> $GITHUB_ENV
+
+      - name: Run tests (all OS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "  Qt6_DIR=${Qt6_DIR:-<unset>}"
+
+          echo "QT_TEST_DEBUG=${QT_TEST_DEBUG:-0}"
+
+          # Hide these noisy lines (match after stripping ANSI, but print original so colors stay)
+          FILTER='^(NativeExtensionHostFactory[.:]|Settings Sync:|\\[CMakeTools\\]|workbench#open\(\))|.*ERROR:dbus|.*viz_main_impl|.*ERROR:gpu/'
+
+          run_cmd() {
+            debug_level="${QT_TEST_DEBUG:-0}"        # default = 0
+            if [[ "$debug_level" == "2" ]]; then
+              "$@"
+            else
+              # 1) merge stderr  2) strip ANSI only for matching  3) print original (colored) if not matched
+              "$@" 2>&1 | awk -v pat="$FILTER" '
+                function strip_ansi(s){ gsub(/\x1B\[[0-9;]*[A-Za-z]/, "", s); return s }
+                {
+                  raw=$0
+                  line=$0
+                  gsub(/\r/, "", line)         # drop CR to avoid partial-line mismatches
+                  if ( strip_ansi(line) ~ pat ) next
+                  print raw
+                  fflush()
+                }'
+            fi
+          }
+
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            XVFB=(xvfb-run -a -s "-screen 0 1280x720x24")
+            run_cmd "${XVFB[@]}" npm --prefix qt-core run test:only
+            run_cmd "${XVFB[@]}" npm --prefix qt-cpp  run test:only
+            run_cmd "${XVFB[@]}" npm --prefix qt-qml  run test:only
+            run_cmd "${XVFB[@]}" npm --prefix qt-ui   run test:only
+          else
+            run_cmd npm --prefix qt-core run test:only
+            run_cmd npm --prefix qt-cpp  run test:only
+            run_cmd npm --prefix qt-qml  run test:only
+            run_cmd npm --prefix qt-ui   run test:only
+          fi

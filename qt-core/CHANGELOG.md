@@ -1,10 +1,92 @@
 # Change Log
 
-## 1.5.0 (Apr 10, 2025)
+## 1.9.0 (Sep 11, 2025)
+
+🎉 **Added**
+
+- Introduce the `Open current file in Linguist` command
+- Introduce QRC editor to modify `qrc` files via UI
+- Introduce variable substitution in configuration paths
+- Supported variables for substitution:
+  - `${workspaceFolder}` for the workspace root directory
+  - `${userHome}` for the user's home directory
+- Use default Qt installation root path in the `Qt: Register Qt Installation` command
+
+## 1.8.0 (Sep 11, 2025)
+
+### New Item Wizard
+
+🐞 **Fixed**
+
+- Add the missing `options` field causing user-selected options to be ignored
+- Disable timeout for working directory selection
+
+🎉 **Added**
+
+- Add fallback text colors for error/info alerts
+- Introduce `WebviewChannel` for consistent panel-webview communication across multiple apps
+- Reorganize VSCode panel code and type definitions slightly
+
+⚠️ **Changed**
+
+- Change icons
+- Update project structure regarding webview UI to accommodate more apps side-by-side
+
+### qtcli
+
+🐞 **Fixed**
+
+- Remove root element option to fix `ApplicationWindow`
+- Fix signal declaration in the C++ template
+
+## 1.7.0 (Jul 2, 2025)
+
+🎉 **Added**
+
+- Generate a kit from `qtpaths` in the environment variable PATH
+- Support Qt.rgba() in color provider
+- Add a `New item` dialog for creating a new project or file
+
+🐞 **Fixed**
+
+- Don't change `qtpaths` name if it is already set
+
+---
+
+### qtcli
+
+🎉 **Added**
+
+- Add endpoints for managing custom presets
+- Enable wrapping in prompt list navigation
+
+🐞 **Fixed**
+
+- Resolve errors in Qt Widgets application template
+
+⚠️ **Changed**
+
+- Use UDS or pipe by default in server mode
+- Preserve file extension if already included in filename
+- Provide option to select QML root element - `Window` or `ApplicationWindow` in Qt Quick application template
+
+## 1.6.0 (Jul 2, 2025)
+
+The same as `1.5.1`
+
+## 1.5.1 (Apr 16, 2025)
+
+🐞 **Fixed**
+
+- Fix the `Cannot find qtcli executable.` error due to the missing permissions
+
+## 1.5.0 (Apr 14, 2025)
 
 🎉 **Added**
 
 - Add `cmake.useCMakePresets": "never"`to the recommended settings
+
+---
 
 ### qtcli
 

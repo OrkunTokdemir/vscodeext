@@ -4,27 +4,8 @@ steps:
   - id: minimumQtVersion
     type: picker
     question: "Minimum Qt version:"
-    default: "6.5"
+    default: "6.8"
     items:
+      - text: "6.8"
       - text: "6.5"
-      - text: "6.4"
       - text: "6.2"
-
-  - id: qqcStyle
-    type: picker
-    question: "Qt Quick Controls style:"
-    default: ""
-    items:
-      - text: <None>
-        data: ""
-      - text: Material
-      - text: Universal
-
-  - id: qqcTheme
-    type: picker
-    question: "Qt Quick Controls theme:"
-    default: Light
-    when: '{{ not (eq .qqcStyle "") }}'
-    items:
-      - text: Light
-      - text: Dark

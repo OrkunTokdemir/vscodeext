@@ -2,7 +2,7 @@
   "name": "qt-core",
   "displayName": "Qt Core",
   "description": "Qt Core",
-  "version": "1.7.0",
+  "version": "1.11.0",
   "homepage": "https://www.qt.io/",
   "icon": "res/icons/qt.png",
   "publisher": "theqtcompany",
@@ -30,6 +30,9 @@
   ],
   "qna": "marketplace",
   "pricing": "Free",
+  "activationEvents": [
+    "workspaceContains:*.qrc"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -54,6 +57,11 @@
         "category": "Qt"
       },
       {
+        "command": "qt-core.reportIssue",
+        "title": "%qt-core.command.reportIssue.title%",
+        "category": "Qt"
+      },
+      {
         "command": "qt-core.setRecommendedSettings",
         "title": "%qt-core.command.setRecommendedSettings.title%",
         "category": "Qt"
@@ -74,14 +82,29 @@
         "category": "Qt"
       },
       {
-        "command": "qt-core.createNewFile",
-        "title": "%qt-core.command.createNewFile.title%",
+        "command": "qt-core.createNewItem",
+        "title": "%qt-core.command.createNewItem.title%",
         "category": "Qt"
       },
       {
-        "command": "qt-core.createNewProject",
-        "title": "%qt-core.command.createNewProject.title%",
+        "command": "qt-core.openInLinguist",
+        "title": "%qt-core.command.openInLinguist.title%",
         "category": "Qt"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "qt-core.qrcEditor",
+        "displayName": "QRC editor",
+        "extensions": [
+          ".qrc"
+        ],
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.qrc"
+          }
+        ]
       }
     ],
     "languages": [
@@ -132,6 +155,18 @@
           "light": "res/icons/qdoc-light.svg",
           "dark": "res/icons/qdoc-dark.svg"
         }
+      },
+      {
+        "id": "qt-ts",
+        "configuration": "./res/lang/qt-ts/language-configuration.json",
+        "aliases": [
+          "Qt TS",
+          "Qt Translation Script"
+        ],
+        "icon": {
+          "light": "res/icons/qt-ts-light.svg",
+          "dark": "res/icons/qt-ts-dark.svg"
+        }
       }
     ],
     "grammars": [
@@ -149,6 +184,11 @@
         "language": "qss",
         "scopeName": "source.qss",
         "path": "./res/lang/qss/qss.tmLanguage.json"
+      },
+      {
+        "language": "qt-ts",
+        "scopeName": "source.qt-ts",
+        "path": "./res/lang/qt-ts/qt-ts.tmLanguage.json"
       }
     ],
     "configuration": {
@@ -190,44 +230,86 @@
           "default": false,
           "description": "Open online documentation in external browser",
           "scope": "machine-overridable"
+        },
+        "qt-core.defaultProjectDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Specify the default project directory when creating new projects",
+          "scope": "machine-overridable"
         }
       }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "qt-core.openInLinguist",
+          "when": "editorLangId == qt-ts",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "cross-env NODE_ENV=production node ./esbuild.mjs && git rev-parse HEAD > commit",
-    "compile": "node ./esbuild.mjs",
+    "vscode:prepublish": "cross-env NODE_ENV=production npm run compile && git rev-parse HEAD > commit",
+    "compile": "npm run build:webview && node ./esbuild.mjs",
+    "compile-test": "node ./esbuild.mjs --test",
     "watch": "node ./esbuild.mjs --watch",
     "pretest": "npm run compile && npm run lint",
+    "test:only": "npm run compile-test && cd ./out/test/ && node runTest.js",
+    "test": "npm run test:only --",
     "lint": "npm run prettierWrite && eslint . --fix --cache",
-    "prettierWrite": "npm run prettierBase -- --write \"**/*.{js,ts,json,mjs,cjs}\" --log-level silent",
-    "prettierCheck": "npm run prettierBase -- --check \"**/*.{js,ts,json,mjs,cjs}\"",
+    "prettierWrite": "npm run prettierBase -- --write \"**/*.{js,ts,mts,json,mjs,cjs,mts}\" --log-level silent",
+    "prettierCheck": "npm run prettierBase -- --check \"**/*.{js,ts,mts,json,mjs,cjs,mts}\"",
     "prettierBase": "prettier --config \"../common/.prettierrc\" --ignore-path \"../common/.prettierignore\" --cache --cache-strategy metadata",
-    "package": "vsce package --out out"
+    "package": "vsce package --out out",
+    "ci:all": "npm run ci:webview && npm ci",
+    "install:all": "npm run install:webview && npm install",
+    "ci:webview": "cd webview-ui && npm ci",
+    "build:webview": "cd webview-ui && npm run build",
+    "install:webview": "cd webview-ui && npm install"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.0",
     "@eslint/js": "^9.21.0",
+    "@types/chai": "^5.2.2",
     "@types/command-exists": "^1.2.3",
+    "@types/glob": "^8.1.0",
+    "@types/jest": "^29.5.14",
+    "@types/jimp": "^0.2.1",
     "@types/lodash": "^4.17.12",
+    "@types/lodash-es": "^4.17.12",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.17.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.94.0",
+    "@types/which": "^3.0.4",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "@vscode/vsce": "^2.32.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.0",
+    "chai": "^5.2.0",
     "cross-env": "^7.0.3",
     "esbuild": "^0.25.0",
     "eslint": "^8.57.1",
+    "glob": "^11.0.2",
+    "mocha": "^11.5.0",
     "prettier": "^3.3.3",
-    "ts-node": "^10.9.2",
+    "sinon": "^20.0.0",
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "axios": "^1.9.0",
     "command-exists": "^1.2.9",
+    "dotenv": "^16.5.0",
+    "fast-xml-parser": "^5.2.5",
+    "jimp": "^1.6.0",
     "lodash": "^4.17.21",
+    "lodash-es": "^4.17.21",
     "module-alias": "^2.2.3",
     "qt-lib": "file:../qt-lib",
     "typescript": "^5.6.3",
-    "untildify": "^5.0.0"
+    "which": "^5.0.0"
   }
 }

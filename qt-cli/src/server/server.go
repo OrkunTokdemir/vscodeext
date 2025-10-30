@@ -5,13 +5,13 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"qtcli/server/handlers"
 	"qtcli/util"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,27 +22,46 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var port = "8080"
-var addr = ":" + port
+type Options struct {
+	UseTcp  bool
+	TcpPort string
+}
+
 var pidFile = getPidFilePath()
 
 func init() {
 	gin.SetMode(gin.ReleaseMode)
 }
 
-func Start() {
-	handler := createApiHandler()
+func getNetListener(o Options) (net.Listener, error) {
+	if o.UseTcp {
+		if o.TcpPort == "" {
+			o.TcpPort = "8080"
+		}
+
+		return net.Listen("tcp", ":"+o.TcpPort)
+	}
+
+	return getLocalIpcListener()
+}
+
+func Start(o Options) {
+	ensurePrevRunStopped(pidFile)
+
+	listener, err := getNetListener(o)
+	if err != nil {
+		logrus.Fatalf("Cannot open listener: %v", err)
+	}
+
+	defer listener.Close()
 	server := &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Handler: createApiHandler(),
 	}
 
 	go func() {
-		ensurePrevRunStopped(pidFile)
 		savePidToFile(os.Getpid(), pidFile)
-
-		logrus.Infof("Starting server on %s", addr)
-		if err := server.ListenAndServe(); err != nil {
+		logrus.Infof("Starting server at %s", listener.Addr().String())
+		if err := server.Serve(listener); err != nil {
 			logrus.Fatalf("Server error: %v", err)
 		}
 	}()
@@ -52,12 +71,13 @@ func Start() {
 	<-quit
 
 	logrus.Info("Shutting down server...")
+	os.Remove(pidFile)
+
 	if err := server.Close(); err != nil {
 		logrus.Fatalf("Server close error: %v", err)
 	}
 
 	logrus.Info("Server stopped")
-	os.Remove(pidFile)
 }
 
 func Stop() {
@@ -72,7 +92,7 @@ func createApiHandler() *gin.Engine {
 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
-		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		MaxAge:           12 * time.Hour,
@@ -84,9 +104,21 @@ func createApiHandler() *gin.Engine {
 
 	v1 := r.Group("/v1")
 
-	v1.GET("/presets", handlers.GetPresets)
+	// read presets or details of the specific preset
+	v1.GET("/presets", handlers.GetPresetsByNameOrType)
 	v1.GET("/presets/:id", handlers.GetPresetById)
-	v1.POST("/items", handlers.PostNewItem)
+
+	// manage custom presets
+	v1.POST("/presets", handlers.PostCustomPreset)
+	v1.PATCH("/presets/:id", handlers.PatchCustomPresetById)
+	v1.DELETE("/presets/:id", handlers.DeleteCustomPresetById)
+
+	// create item (project or file) & validation
+	v1.POST("/items", handlers.PostItems)
+	v1.POST("/items/validate", handlers.PostItemsValidate)
+
+	// others
+	v1.GET("/ready", handlers.GetReady)
 	v1.DELETE("/server", handlers.DeleteServer)
 
 	return r
@@ -122,12 +154,4 @@ func getActivePid(filePath string) (int, error) {
 	}
 
 	return strconv.Atoi(string(data))
-}
-
-func getPidFilePath() string {
-	if runtime.GOOS == "windows" {
-		return os.Getenv("LOCALAPPDATA") + "\\qtcli\\qtcli-server.pid"
-	}
-
-	return "/tmp/qtcli/qtcli-server.pid"
 }

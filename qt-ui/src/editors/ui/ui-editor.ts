@@ -3,12 +3,7 @@
 
 import * as vscode from 'vscode';
 
-import {
-  askForKitSelection,
-  createLogger,
-  QtWorkspaceType,
-  telemetry
-} from 'qt-lib';
+import { askForKitSelection, createLogger, telemetry } from 'qt-lib';
 import { getNonce, getUri } from '@/editors/util';
 import { projectManager } from '@/extension';
 import { delay } from '@/util';
@@ -39,24 +34,30 @@ export class UIEditorProvider implements vscode.CustomTextEditorProvider {
     };
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
     webviewPanel.webview.onDidReceiveMessage(async (e: { type: string }) => {
-      const project = projectManager.findProjectContainingFile(document.uri);
-      if (project === undefined) {
-        logger.error('Project not found');
-        throw new Error('Project not found');
-      }
-      const designerServer = project.designerServer;
-      const designerClient = project.designerClient;
-
       switch (e.type) {
-        case 'run':
+        case 'run': {
+          const project = projectManager.findProjectContainingFile(
+            document.uri
+          );
+          if (project === undefined) {
+            const err = `Project not found for file: ${document.uri.toString()}`;
+            logger.error(err);
+            return;
+          }
+          const designerServer = project.designerServer;
+          const designerClient = project.designerClient;
           if (designerClient === undefined) {
             // User may not have selected the kit.
             // We can check and ask for kit selection.
-            if (project.workspaceType === QtWorkspaceType.CMakeExt) {
-              askForKitSelection();
+            if (project.workspaceFeatures?.projectTypes.cmake) {
+              askForKitSelection({
+                message:
+                  'Cannot find Qt Widgets Designer in the Qt installation that the selected kit refers to.',
+                buttonName: 'Select a kit including Qt Widgets Designer'
+              });
             }
             logger.error('Designer client not found');
-            throw new Error('Designer client not found');
+            return;
           }
           if (!designerClient.isRunning()) {
             logger.info(`Starting designer client:${designerClient.exe}`);
@@ -71,14 +72,39 @@ export class UIEditorProvider implements vscode.CustomTextEditorProvider {
           designerServer.sendFile(document.uri.fsPath);
           logger.info('File sent to designer server: ' + document.uri.fsPath);
           break;
+        }
+        case 'openWithTextEditor': {
+          void UIEditorProvider.openWithTextEditor(document);
+          break;
+        }
         default:
           logger.error('Unknown message type');
-          throw new Error('Unknown message type');
+          return;
       }
     });
     return Promise.resolve();
   }
-
+  private static async openWithTextEditor(
+    document: vscode.TextDocument
+  ): Promise<void> {
+    // Reveal the file in the current editor tab instead of opening a new one
+    await vscode.commands.executeCommand(
+      'workbench.action.revertAndCloseActiveEditor'
+    );
+    await vscode.commands.executeCommand(
+      'vscode.openWith',
+      document.uri,
+      'default',
+      {
+        preview: false,
+        preserveFocus: false
+      }
+    );
+    telemetry.sendAction('openWithTextEditor');
+    logger.info(
+      'File opened with text editor in current tab: ' + document.uri.fsPath
+    );
+  }
   private getHtmlForWebview(webview: vscode.Webview): string {
     // Use a nonce to whitelist which scripts can be run
     const nonce = getNonce();
@@ -112,6 +138,7 @@ export class UIEditorProvider implements vscode.CustomTextEditorProvider {
     <body>
       <div>
         <vscode-button id="openWithDesignerButton" tabindex="0">Open this file with Qt Widgets Designer</vscode-button>
+        <vscode-button id="openWithTextEditorButton" tabindex="0" style="margin-left: 12px;">Open this file with Text Editor</vscode-button>
       </div>
       <script type="module" nonce="${nonce}" src="${scriptUri.toString()}"></script>
     </body>

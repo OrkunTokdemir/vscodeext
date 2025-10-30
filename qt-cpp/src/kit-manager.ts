@@ -11,9 +11,7 @@ import {
   OSExeSuffix,
   UserLocalDir,
   createLogger,
-  QtInsRootConfigName,
-  AdditionalQtPathsName,
-  GlobalWorkspace,
+  CoreKey,
   compareVersions,
   findQtKits,
   isError,
@@ -36,7 +34,7 @@ import { QtVersionFromKit } from '@util/util';
 
 const logger = createLogger('kit-manager');
 
-export const CMakeDefaultGenerator = 'Ninja';
+const CMakeDefaultGenerator = 'Ninja';
 const CMakeToolsDir = cmakeToolsDir();
 export const CMAKE_GLOBAL_KITS_FILEPATH = cmakeGlobalKitsFilepath();
 
@@ -141,7 +139,8 @@ export class KitManager {
     win32: '32',
     x86: '32',
     x86_64: '64',
-    i386: '32'
+    i386: '32',
+    arm64: '64'
   };
   static readonly MsvcInfoRegexp = /msvc(\d\d\d\d)_(.+)/; // msvcYEAR_ARCH
   static readonly MsvcInfoNoArchRegexp = /msvc(\d\d\d\d)/; // msvcYEAR
@@ -428,7 +427,7 @@ export class KitManager {
     if (mscver >= 1920 && mscver <= 1929) {
       return '2019';
     }
-    if (mscver >= 1930 && mscver <= 1939) {
+    if (mscver >= 1930 && mscver <= 1944) {
       return '2022';
     }
     return undefined;
@@ -440,8 +439,19 @@ export class KitManager {
   ) {
     const generatedKits = await KitManager.generateKitsFromQtPathsInfo(paths);
     logger.info(`QtPaths Generated kits: ${JSON.stringify(generatedKits)}`);
-    await this.updateCMakeKitsJsonForQtPathsQtKits(
+    let previousQtKits: Kit[] = [];
+    if (workspaceFolder) {
+      const projectStateManager =
+        this.getProject(workspaceFolder)?.getStateManager();
+      if (projectStateManager) {
+        previousQtKits = projectStateManager.getWorkspaceQtPathsQtKits();
+      }
+    } else {
+      previousQtKits = this.globalStateManager.getGlobalQtPathsQtKits();
+    }
+    await KitManager.updateCMakeKitsJson(
       generatedKits,
+      previousQtKits,
       workspaceFolder
     );
     if (workspaceFolder) {
@@ -455,7 +465,7 @@ export class KitManager {
 
   private static async parseCMakeKitsFile(cmakeKitsFile: string) {
     if (!fsSync.existsSync(cmakeKitsFile)) {
-      return [];
+      return undefined;
     }
     const cmakeKitsFileContent = await fs.readFile(cmakeKitsFile, 'utf8');
     let currentKits: Kit[] = [];
@@ -463,63 +473,15 @@ export class KitManager {
     return currentKits;
   }
 
-  private async updateCMakeKitsJsonForQtPathsQtKits(
-    newGeneratedKits: Kit[],
-    workspaceFolder?: vscode.WorkspaceFolder
-  ) {
-    let previousQtKits: Kit[] = [];
-    if (workspaceFolder) {
-      const projectStateManager =
-        this.getProject(workspaceFolder)?.getStateManager();
-      if (projectStateManager) {
-        previousQtKits = projectStateManager.getWorkspaceQtPathsQtKits();
-      }
-    } else {
-      previousQtKits = this.globalStateManager.getGlobalQtPathsQtKits();
-    }
-    const cmakeKitsFile = workspaceFolder
-      ? path.join(workspaceFolder.uri.fsPath, '.vscode', 'cmake-kits.json')
-      : CMAKE_GLOBAL_KITS_FILEPATH;
-    if (cmakeKitsFile === undefined) {
-      throw new Error('CMake tools directory not found');
-    }
-    const currentKits = await KitManager.parseCMakeKitsFile(cmakeKitsFile);
-    const newKits = currentKits.filter((kit) => {
-      // filter kits if previousQtKits contains the kit with the same name
-      return !previousQtKits.find((prevKit) => prevKit.name === kit.name);
-    });
-    newKits.push(...newGeneratedKits);
-    if (newKits.length !== 0 || fsSync.existsSync(cmakeKitsFile)) {
-      await fileWriter.push(
-        cmakeKitsFile,
-        JSON.stringify(newKits, null, 2),
-        (err: Error | null | undefined) => {
-          if (err) {
-            logger.error('Error writing to cmake-kits.json:', err.message);
-            throw err;
-          } else {
-            logger.info(`Successfully wrote to ${cmakeKitsFile}`);
-          }
-        }
-      );
-    }
-  }
-
-  private static async loadCMakeKitsFileJSON(): Promise<Kit[]> {
-    if (CMAKE_GLOBAL_KITS_FILEPATH === undefined) {
-      throw new Error('CMake tools directory not found');
-    }
-    if (!fsSync.existsSync(CMAKE_GLOBAL_KITS_FILEPATH)) {
-      return [];
-    }
-    const data = await fs.readFile(CMAKE_GLOBAL_KITS_FILEPATH);
-    const stringData = data.toString();
-    let kits: Kit[] = [];
+  private static async loadCMakeKitsFileJSON(cmakeKitsFile: string) {
+    let kits: Kit[] | undefined = [];
     try {
-      kits = JSON.parse(stringData) as Kit[];
+      kits = await KitManager.parseCMakeKitsFile(cmakeKitsFile);
     } catch (error) {
       if (isError(error)) {
-        logger.error('Error parsing cmake-kits.json:', error.message);
+        const fileName = path.basename(cmakeKitsFile);
+        logger.error(`Error parsing ${fileName}:`, error.message);
+        return undefined;
       }
     }
     return kits;
@@ -641,9 +603,25 @@ export class KitManager {
     logger.info('newKit: ' + JSON.stringify(newKit));
     yield newKit;
   }
-
+  private static async loadCMakeKitsFileJSONorScanKits(cmakeKitsFile: string) {
+    let allCMakeKits = await KitManager.loadCMakeKitsFileJSON(cmakeKitsFile);
+    if (allCMakeKits === undefined) {
+      // cmake-tools-kits.json does not exist or is malformed
+      // Try to generate it by invoking the CMake Tools command to scan for kits
+      // and then load the file again.
+      await vscode.commands.executeCommand('cmake.scanForKits');
+      allCMakeKits =
+        (await KitManager.loadCMakeKitsFileJSON(cmakeKitsFile)) ?? [];
+    }
+    return allCMakeKits;
+  }
   private static async getKitsByCMakeExtension() {
-    const allCMakeKits = await KitManager.loadCMakeKitsFileJSON();
+    if (CMAKE_GLOBAL_KITS_FILEPATH === undefined) {
+      throw new Error('CMake tools directory not found');
+    }
+    const allCMakeKits = await KitManager.loadCMakeKitsFileJSONorScanKits(
+      CMAKE_GLOBAL_KITS_FILEPATH
+    );
     logger.info(`Loaded CMake kits: ${JSON.stringify(allCMakeKits)}`);
     // Filter out kits generated by us, since we only want to use Kits
     // that were created by the cmake extension as templates.
@@ -683,21 +661,6 @@ export class KitManager {
       qtInstallations
     );
     logger.info(`New generated kits: ${JSON.stringify(newGeneratedKits)}`);
-    await this.updateCMakeKitsJson(newGeneratedKits, workspaceFolder);
-
-    if (workspaceFolder) {
-      await this.getProject(workspaceFolder)
-        ?.getStateManager()
-        .setWorkspaceQtKits(newGeneratedKits);
-      return;
-    }
-    await this.globalStateManager.setGlobalQtKits(newGeneratedKits);
-  }
-
-  private async updateCMakeKitsJson(
-    newGeneratedKits: Kit[],
-    workspaceFolder?: vscode.WorkspaceFolder
-  ) {
     let previousQtKits: Kit[] = [];
     if (workspaceFolder) {
       const projectStateManager =
@@ -708,13 +671,34 @@ export class KitManager {
     } else {
       previousQtKits = this.globalStateManager.getGlobalQtKits();
     }
+    await KitManager.updateCMakeKitsJson(
+      newGeneratedKits,
+      previousQtKits,
+      workspaceFolder
+    );
+
+    if (workspaceFolder) {
+      await this.getProject(workspaceFolder)
+        ?.getStateManager()
+        .setWorkspaceQtKits(newGeneratedKits);
+      return;
+    }
+    await this.globalStateManager.setGlobalQtKits(newGeneratedKits);
+  }
+
+  private static async updateCMakeKitsJson(
+    newGeneratedKits: Kit[],
+    previousQtKits: Kit[],
+    workspaceFolder?: vscode.WorkspaceFolder
+  ) {
     const cmakeKitsFile = workspaceFolder
       ? path.join(workspaceFolder.uri.fsPath, '.vscode', 'cmake-kits.json')
       : CMAKE_GLOBAL_KITS_FILEPATH;
     if (cmakeKitsFile === undefined) {
       throw new Error('CMake tools directory not found');
     }
-    const currentKits = await KitManager.parseCMakeKitsFile(cmakeKitsFile);
+    const currentKits =
+      await KitManager.loadCMakeKitsFileJSONorScanKits(cmakeKitsFile);
     const newKits = currentKits.filter((kit) => {
       // Filter kits if previousQtKits contains the kit with the same name
       // Otherwise, we will have duplicate Qt kits.
@@ -774,7 +758,7 @@ export class KitManager {
         return false;
       }
       logger.info('version: ' + version);
-      const msvcTargetArch = kit.visualStudioArchitecture ?? '';
+      const msvcTargetArch = kit.visualStudioArchitecture?.toLowerCase() ?? '';
       const msvcTargetPlatformArch = kit.preferredGenerator?.platform ?? '';
       logger.info('msvcTargetArch: ' + msvcTargetArch);
       const targetArchitecture = KitManager.MapMsvcPlatformToQt[msvcTargetArch];
@@ -835,13 +819,18 @@ export class KitManager {
   }
 
   public static getWorkspaceFolderQtInsRoot(folder: vscode.WorkspaceFolder) {
-    return coreAPI?.getValue<string>(folder, QtInsRootConfigName) ?? '';
+    return (
+      coreAPI?.getValue<string>(folder, CoreKey.QT_INSTALLATION_ROOT) ?? ''
+    );
   }
   public static getWorkspaceFolderAdditionalQtPaths(
     folder: vscode.WorkspaceFolder
   ) {
     return (
-      coreAPI?.getValue<QtAdditionalPath[]>(folder, AdditionalQtPathsName) ?? []
+      coreAPI?.getValue<QtAdditionalPath[]>(
+        folder,
+        CoreKey.ADDITIONAL_QT_PATHS
+      ) ?? []
     );
   }
   private static getVCPKGToolchainFile() {
@@ -852,14 +841,19 @@ export class KitManager {
     return path.join(vckpgRoot, 'scripts', 'buildsystems', 'vcpkg.cmake');
   }
 }
-export function getCurrentGlobalQtInstallationRoot(): string {
-  return coreAPI?.getValue<string>(GlobalWorkspace, QtInsRootConfigName) ?? '';
+function getCurrentGlobalQtInstallationRoot(): string {
+  return (
+    coreAPI?.getValue<string>(
+      CoreKey.GLOBAL_WORKSPACE,
+      CoreKey.QT_INSTALLATION_ROOT
+    ) ?? ''
+  );
 }
-export function getCurrentGlobalAdditionalQtPaths(): QtAdditionalPath[] {
+function getCurrentGlobalAdditionalQtPaths(): QtAdditionalPath[] {
   return (
     coreAPI?.getValue<QtAdditionalPath[]>(
-      GlobalWorkspace,
-      AdditionalQtPathsName
+      CoreKey.GLOBAL_WORKSPACE,
+      CoreKey.ADDITIONAL_QT_PATHS
     ) ?? []
   );
 }

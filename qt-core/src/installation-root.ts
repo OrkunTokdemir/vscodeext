@@ -4,7 +4,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import untildify from 'untildify';
 
 import {
   Home,
@@ -17,7 +16,9 @@ import {
   QtWorkspaceConfigMessage,
   QtAdditionalPath,
   IsMacOS,
-  telemetry
+  telemetry,
+  resolveConfiguration,
+  CoreKey
 } from 'qt-lib';
 import { EXTENSION_ID } from '@/constants';
 import { coreAPI } from '@/extension';
@@ -47,7 +48,7 @@ export function getCurrentGlobalQtInstallationRoot(): string {
   const qtInsRootConfig =
     getConfiguration().inspect<string>(QtInsRootConfigName);
   const insRoot = qtInsRootConfig?.globalValue;
-  return insRoot ? untildify(insRoot) : '';
+  return insRoot ? resolveConfiguration(insRoot) : '';
 }
 
 export function getCurrentGlobalAdditionalQtPaths(): QtAdditionalPath[] {
@@ -65,16 +66,7 @@ function getConfiguration() {
   return vscode.workspace.getConfiguration(EXTENSION_ID);
 }
 
-export function checkDefaultQtInsRootPath() {
-  if (getDoNotAskForDefaultQtInstallationRoot()) {
-    return;
-  }
-
-  if (getCurrentGlobalQtInstallationRoot()) {
-    // Qt installation root is already set. No need to check for default path
-    return;
-  }
-
+export function getDefaultQtRootCandidates(): string[] {
   if (!IsUnix && !IsWindows) {
     const errorMessage = 'Unsupported OS';
     logger.error(errorMessage);
@@ -128,9 +120,28 @@ export function checkDefaultQtInsRootPath() {
     );
   }
   const defaultPaths = IsUnix ? unixDefaultPaths : winDefaultPaths;
+  return defaultPaths;
+}
+
+function getPossibleDefaultQtInstallationRoot() {
+  const defaultPaths = getDefaultQtRootCandidates();
   const foundDefaultPath = defaultPaths.find((defPath) =>
     fs.existsSync(defPath)
   );
+  return foundDefaultPath;
+}
+
+export function checkDefaultQtInsRootPath() {
+  if (getDoNotAskForDefaultQtInstallationRoot()) {
+    return;
+  }
+
+  if (getCurrentGlobalQtInstallationRoot()) {
+    // Qt installation root is already set. No need to check for default path
+    return;
+  }
+
+  const foundDefaultPath = getPossibleDefaultQtInstallationRoot();
   if (!foundDefaultPath) {
     return;
   }
@@ -153,14 +164,33 @@ export function checkDefaultQtInsRootPath() {
       }
     });
 }
+export function registerRegisterQtCommand() {
+  return vscode.commands.registerCommand(
+    `${EXTENSION_ID}.registerQt`,
+    registerQt
+  );
+}
+
+//Test-specific command
+export function registerRegisterQtByPathCommand() {
+  return vscode.commands.registerCommand(
+    `${EXTENSION_ID}.registerQtByPath`,
+    setGlobalQtInstallationRoot
+  );
+}
 
 export async function registerQt() {
+  telemetry.sendAction('registerQt');
   const options: vscode.OpenDialogOptions = {
     canSelectMany: false,
     openLabel: 'Select Qt installation root',
     canSelectFiles: false,
     canSelectFolders: true
   };
+  const defaultQtInsRoot = getPossibleDefaultQtInstallationRoot();
+  if (defaultQtInsRoot) {
+    options.defaultUri = vscode.Uri.file(defaultQtInsRoot);
+  }
   const selectedQtInsRootUri = await vscode.window.showOpenDialog(options);
   if (selectedQtInsRootUri?.[0] === undefined) {
     return;
@@ -172,7 +202,7 @@ export async function registerQt() {
   return 0;
 }
 
-async function setGlobalQtInstallationRoot(qtInsRoot: string) {
+export async function setGlobalQtInstallationRoot(qtInsRoot: string) {
   logger.info(`Setting global Qt installation root to: ${qtInsRoot}`);
   const config = vscode.workspace.getConfiguration(EXTENSION_ID);
   await config.update(
@@ -197,8 +227,12 @@ export function onQtInsRootUpdated(
   logger.info(`Qt installation root updated: "${newQtInstallationRoot}"`);
 
   const message = new QtWorkspaceConfigMessage(folder);
-  coreAPI?.setValue(folder, QtInsRootConfigName, newQtInstallationRoot);
-  message.config.add(QtInsRootConfigName);
+  coreAPI?.setValue(
+    folder,
+    CoreKey.QT_INSTALLATION_ROOT,
+    newQtInstallationRoot
+  );
+  message.config.add(CoreKey.QT_INSTALLATION_ROOT);
   logger.info(`Notifying coreAPI with message: ${message.toString()}`);
   coreAPI?.notify(message);
 }
@@ -221,8 +255,8 @@ export function onAdditionalQtPathsUpdated(
   logger.info('Additional Qt Paths updated: ' + JSON.stringify(newPaths));
 
   const message = new QtWorkspaceConfigMessage(folder);
-  coreAPI?.setValue(folder, AdditionalQtPathsName, newPaths);
-  message.config.add(AdditionalQtPathsName);
+  coreAPI?.setValue(folder, CoreKey.ADDITIONAL_QT_PATHS, newPaths);
+  message.config.add(CoreKey.ADDITIONAL_QT_PATHS);
   logger.info(`Notifying coreAPI with message: ${message.toString()}`);
   coreAPI?.notify(message);
 }

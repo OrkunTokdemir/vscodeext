@@ -3,6 +3,7 @@
 
 import { XMLParser } from 'fast-xml-parser';
 import * as fs from 'fs';
+import * as path from 'path';
 
 // Define the structure for the QRC XML
 interface QRCFile {
@@ -28,11 +29,12 @@ export class QRCParser {
   constructor() {
     this.parser = new XMLParser({
       ignoreAttributes: false,
-      parseAttributeValue: true
+      parseAttributeValue: true,
+      alwaysCreateTextNode: true
     });
   }
 
-  parseQRCFile(filePath: string): Map<string, string> {
+  parseQRCFile(filePath: string) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Cannot find file: ${filePath}`);
     }
@@ -41,12 +43,15 @@ export class QRCParser {
       return cachedContent;
     }
     const xmlContent = fs.readFileSync(filePath, 'utf8');
-    const fileMapping = this.parseQRC(xmlContent);
+    const fileMapping = this.parseQRC(xmlContent, path.dirname(filePath));
+    if (!fileMapping) {
+      return undefined;
+    }
     this._cache.set(filePath, fileMapping);
     return fileMapping;
   }
 
-  parseQRC(xmlContent: string): Map<string, string> {
+  parseQRC(xmlContent: string, qrcDir: string) {
     try {
       // Parse the XML content into the defined structure
       const jsonObj = this.parser.parse(xmlContent) as QRCParsed; // Type assertion to QRCParsed
@@ -55,7 +60,7 @@ export class QRCParser {
       const resources = jsonObj.RCC.qresource;
 
       if (!resources) {
-        throw new Error('Cannot find "qresource" in the QRC file');
+        return undefined;
       }
 
       // Ensure resources is always an array
@@ -72,26 +77,20 @@ export class QRCParser {
           : [resource.file];
 
         files.forEach((file) => {
-          const fileAlias = file['@_alias']; // Use the alias as the key
-          const filePath = file['#text'];
-          if (!fileAlias || !filePath) {
+          // Only keep .qml and .js files
+          const text = file['#text'];
+          if (!text || (!text.endsWith('.qml') && !text.endsWith('.js'))) {
             return;
           }
-          const alias = prefix + fileAlias; // Combine the prefix and alias
-          resourceMap.set(alias, filePath); // Store alias as key, file path as value
+
+          resourceMap.set(
+            path.join(prefix, file['@_alias'] ?? text).replace(/\\/g, '/'),
+            path.isAbsolute(text) ? text : path.join(qrcDir, text)
+          );
         });
       });
 
-      // Filter the Map to include only .qml and .js files
-      const filteredMap = new Map<string, string>();
-      resourceMap.forEach((filePath, alias) => {
-        // Only keep .qml and .js files
-        if (filePath.endsWith('.qml') || filePath.endsWith('.js')) {
-          filteredMap.set(alias, filePath);
-        }
-      });
-
-      return filteredMap;
+      return resourceMap;
     } catch (error) {
       throw new Error(`Cannot parse QRC file: ${error as string}`);
     }

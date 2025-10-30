@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { program } from 'commander';
 
 function main() {
@@ -16,6 +16,7 @@ function main() {
   const targetExtensionRoot = path.join(extensionRoot, targetExtension);
 
   if (targetExtension === 'all') {
+    void exec('npm run build:qt-cli');
     execSync(`npm run ci:qt-lib`, {
       cwd: extensionRoot,
       stdio: 'inherit'
@@ -29,7 +30,7 @@ function main() {
     cwd: extensionRoot,
     stdio: 'inherit'
   });
-  execSync(`npm run pretest:${targetExtension}`, {
+  execSync(`npm run lint:${targetExtension}`, {
     cwd: extensionRoot,
     stdio: 'inherit'
   });
@@ -50,7 +51,7 @@ function main() {
   }
   const script = path.join(extensionRoot, 'scripts', 'install-ext.ts');
   if (targetExtension === 'all') {
-    const extensions = ['qt-core', 'qt-cpp', 'qt-qml', 'qt-ui'];
+    const extensions = ['qt-core', 'qt-cpp', 'qt-qml', 'qt-ui', 'qt-python'];
     for (const ext of extensions) {
       const targetRoot = path.join(extensionRoot, ext);
       execSync(

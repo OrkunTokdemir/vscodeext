@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"net/http"
 	"path"
 	"qtcli/common"
 	"qtcli/runner"
@@ -12,20 +11,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type PresetResponse struct {
+type PresetsResponseItem struct {
 	Id   string              `json:"id"`
 	Name string              `json:"name"`
 	Meta common.TemplateMeta `json:"meta"`
 }
 
-type PresetDetailsResponse struct {
+type PresetsResponse []PresetsResponseItem
+
+type PresetDetailResponse struct {
 	Id     string                     `json:"id"`
 	Name   string                     `json:"name"`
 	Meta   common.TemplateMeta        `json:"meta"`
 	Prompt *common.PromptFileContents `json:"prompt,omitempty"`
 }
 
-func GetPresets(c *gin.Context) {
+func GetReady(c *gin.Context) {
+	ReplyStatus(c, "ready")
+}
+
+func GetPresetsByNameOrType(c *gin.Context) {
+	name := c.Query("name")
+	if len(name) != 0 {
+		getPresetBy(c, name, "name")
+		return
+	}
+
 	var presets []common.PresetData
 	type_s := c.DefaultQuery("type", "")
 
@@ -37,52 +48,67 @@ func GetPresets(c *gin.Context) {
 	}
 
 	if len(presets) == 0 {
-		c.JSON(http.StatusBadRequest, errorMessage("could not find any preset"))
+		ReplyErrorMsg(c, common.ServerNoPresets)
 		return
 	}
 
-	res := []PresetResponse{}
+	res := PresetsResponse{}
 	for _, p := range presets {
 		template, err := common.OpenTemplateFileIn(
 			runner.GeneratorEnv.FS, p.GetTemplateDir())
 
 		if err != nil {
-			c.JSON(http.StatusBadRequest,
-				errorMessage("could not open template file"))
+			ReplyErrorMsg(c, common.ServerNoTemplateFile)
 			return
 		}
 
-		res = append(res, PresetResponse{
+		res = append(res, PresetsResponseItem{
 			Id:   p.GetUniqueId(),
 			Name: p.GetName(),
 			Meta: template.GetMeta(),
 		})
 	}
 
-	c.JSON(http.StatusOK, res)
+	ReplyGet(c, res)
 }
 
 func GetPresetById(c *gin.Context) {
-	id := c.Param("id")
-	p, err := runner.Presets.Any.FindByUniqueId(id)
+	getPresetBy(c, c.Param("id"), "id")
+}
+
+// helpers
+func getPresetBy(c *gin.Context, value, by string) {
+	var p common.PresetData
+	var err error
+
+	if by == "id" {
+		p, err = runner.Presets.Any.FindByUniqueId(value)
+	} else {
+		p, err = runner.Presets.Any.FindByName(value)
+	}
+
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorMessage("could not find any preset"))
+		ReplyErrorMsg(c, common.ServerNoPreset)
 		return
 	}
 
 	template, err := common.OpenTemplateFileIn(
 		runner.GeneratorEnv.FS, p.GetTemplateDir())
 	if err != nil {
-		c.JSON(http.StatusBadRequest,
-			errorMessage("could not open template file"))
+		ReplyErrorMsg(c, common.ServerNoTemplateFile)
 		return
 	}
 
-	c.JSON(http.StatusOK, PresetDetailsResponse{
+	prompt := getPromptFileContents(p.GetTemplateDir())
+	if prompt != nil {
+		prompt.UpdateDefaultValues(p.GetOptions())
+	}
+
+	ReplyGet(c, PresetDetailResponse{
 		Id:     p.GetUniqueId(),
 		Name:   p.GetName(),
 		Meta:   template.GetMeta(),
-		Prompt: getPromptFileContents(p.GetTemplateDir()),
+		Prompt: prompt,
 	})
 }
 

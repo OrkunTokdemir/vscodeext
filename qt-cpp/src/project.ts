@@ -11,12 +11,13 @@ import { isEmpty, isEqual } from 'lodash';
 import { WorkspaceStateManager } from '@/state';
 import { coreAPI, kitManager } from '@/extension';
 import {
+  CoreKey,
   createLogger,
   IsLinux,
   IsMacOS,
   IsWindows,
   QtWorkspaceConfigMessage,
-  QtWorkspaceType,
+  QtWorkspaceFeatures,
   telemetry
 } from 'qt-lib';
 import { Project, ProjectManager } from 'qt-lib';
@@ -28,6 +29,7 @@ import {
 import { analyzeKit } from '@/kit-manager';
 import * as cmakeFileApi from '@/cmake-file-api';
 import { getMajorQtVersion } from '@/util/util';
+import { CONFIG_CMAKE_PRESET_WARNING, EXTENSION_ID } from '@/constants';
 
 const logger = createLogger('project');
 
@@ -72,31 +74,14 @@ export class CppProject implements Project {
       const onSelectedConfigurationChangedHandler =
         this._cmakeProject.onSelectedConfigurationChanged(
           async (configurationType: cmakeApi.ConfigurationType) => {
-            if (configurationType === cmakeApi.ConfigurationType.Kit) {
-              const kit = await getSelectedKit(this.folder);
-              if (vscode.env.isTelemetryEnabled && kit) {
-                analyzeKit(kit);
-              }
-              const selectedKitPath = kit ? getQtInsRoot(kit) : undefined;
-              const message = new QtWorkspaceConfigMessage(this.folder);
-              coreAPI?.setValue(
-                this.folder,
-                'selectedKitPath',
-                selectedKitPath
-              );
-              message.config.add('selectedKitPath');
-
-              const selectedQtPaths = kit ? getQtPathsExe(kit) : undefined;
-              coreAPI?.setValue(
-                this.folder,
-                'selectedQtPaths',
-                selectedQtPaths
-              );
-              message.config.add('selectedQtPaths');
-              logger.info(
-                `Notifying coreAPI with message: ${message.toString()}`
-              );
-              coreAPI?.notify(message);
+            switch (configurationType) {
+              case cmakeApi.ConfigurationType.Kit:
+                await this.onKitConfigurationChanged();
+                break;
+              case cmakeApi.ConfigurationType.ConfigurePreset:
+              case cmakeApi.ConfigurationType.BuildPreset:
+                CppProject.warnUserForPresetUsage();
+                break;
             }
           }
         );
@@ -114,8 +99,8 @@ export class CppProject implements Project {
             );
             this._buildDir = currentBuildDir;
             const message = new QtWorkspaceConfigMessage(this.folder);
-            coreAPI?.setValue(this.folder, 'buildDir', currentBuildDir);
-            message.config.add('buildDir');
+            coreAPI?.setValue(this.folder, CoreKey.BUILD_DIR, currentBuildDir);
+            message.config.add(CoreKey.BUILD_DIR);
             logger.info(
               `Notifying coreAPI with message: ${message.toString()}`
             );
@@ -127,10 +112,81 @@ export class CppProject implements Project {
           }
         }
       );
+      this.checkCMakePresetInWorkspace();
       this._disposables.push(onCodeModelChangedHandler);
       this._disposables.push(onSelectedConfigurationChangedHandler);
     }
   }
+  private async onKitConfigurationChanged() {
+    const kit = await getSelectedKit(this.folder);
+    if (vscode.env.isTelemetryEnabled && kit) {
+      analyzeKit(kit);
+    }
+    const selectedKitPath = kit ? getQtInsRoot(kit) : undefined;
+    const message = new QtWorkspaceConfigMessage(this.folder);
+    coreAPI?.setValue(this.folder, CoreKey.SELECTED_KIT_PATH, selectedKitPath);
+    message.config.add(CoreKey.SELECTED_KIT_PATH);
+
+    const selectedQtPaths = kit ? getQtPathsExe(kit) : undefined;
+    coreAPI?.setValue(this.folder, CoreKey.SELECTED_QT_PATHS, selectedQtPaths);
+    message.config.add(CoreKey.SELECTED_QT_PATHS);
+    logger.info(`Notifying coreAPI with message: ${message.toString()}`);
+    coreAPI?.notify(message);
+  }
+  private static getDoNotShowCMakePresetWarning() {
+    const configKey = `${EXTENSION_ID}.${CONFIG_CMAKE_PRESET_WARNING}`;
+    const config = vscode.workspace.getConfiguration();
+    return config.get<boolean>(configKey);
+  }
+  private static setDoNotShowCMakePresetWarning(value: boolean) {
+    const configKey = `${EXTENSION_ID}.${CONFIG_CMAKE_PRESET_WARNING}`;
+    const config = vscode.workspace.getConfiguration();
+    void config.update(configKey, value, vscode.ConfigurationTarget.Global);
+  }
+  private static warnUserForPresetUsage() {
+    if (CppProject.getDoNotShowCMakePresetWarning()) {
+      return;
+    }
+
+    const doNotShowAgainButtonMessage = 'Do not show again';
+    void vscode.window
+      .showWarningMessage(
+        'Qt C++ extension does not support CMake Presets yet. Use Kits instead.',
+        doNotShowAgainButtonMessage
+      )
+      .then((result) => {
+        if (result === doNotShowAgainButtonMessage) {
+          CppProject.setDoNotShowCMakePresetWarning(true);
+        }
+      });
+  }
+  private checkCMakePresetInWorkspace() {
+    if (!this._cmakeProject) {
+      throw new Error('CMake project is not defined');
+    }
+    if (CppProject.getDoNotShowCMakePresetWarning()) {
+      return;
+    }
+    // If the project has a CMake Preset, warn the user
+    const presetFiles = ['CMakePresets.json', 'CMakeUserPresets.json'];
+    const presetFileExists = presetFiles.some((file) => {
+      const presetFilePath = path.join(this.folder.uri.fsPath, file);
+      return fs.existsSync(presetFilePath);
+    });
+    // If cmake.useCMakePresets is not never, warn the user
+    const useCMakePresets =
+      vscode.workspace
+        .getConfiguration('cmake')
+        .get<string>('useCMakePresets') !== 'never';
+    if (presetFileExists && useCMakePresets) {
+      // Show warning message after 2 seconds because when the project is opened,
+      // Multiple messages can be shown at once and our message can be lost.
+      setTimeout(() => {
+        CppProject.warnUserForPresetUsage();
+      }, 2000);
+    }
+  }
+
   private async obtainUsedQtModules() {
     if (!this._cmakeProject) {
       throw new Error('CMake project is not defined');
@@ -369,21 +425,34 @@ export class CppProject implements Project {
     logger.info(
       `Setting selected kit path for ${folder.uri.fsPath} to ${selectedKitPath}`
     );
-    coreAPI.setValue(folder, 'selectedKitPath', selectedKitPath);
+    coreAPI.setValue(folder, CoreKey.SELECTED_KIT_PATH, selectedKitPath);
     const selectedQtPaths = kit ? getQtPathsExe(kit) : undefined;
-    coreAPI.setValue(folder, 'selectedQtPaths', selectedQtPaths);
+    coreAPI.setValue(folder, CoreKey.SELECTED_QT_PATHS, selectedQtPaths);
     logger.info(
       `Setting selected Qt paths for ${folder.uri.fsPath} to ${selectedQtPaths}`
     );
-    coreAPI.setValue(folder, 'workspaceType', QtWorkspaceType.CMakeExt);
+
+    const featuresKey = CoreKey.WORKSPACE_FEATURES;
+    let features = coreAPI.getValue<QtWorkspaceFeatures>(folder, featuresKey);
+    features ??= { projectTypes: {} };
+    features.projectTypes.cmake = true;
+
+    coreAPI.setValue(folder, featuresKey, features);
     logger.info(
-      `Setting workspace type for ${folder.uri.fsPath} to ${QtWorkspaceType.CMakeExt}`
+      `Setting workspace features for ${folder.uri.fsPath} to ${JSON.stringify(features)}`
     );
-    coreAPI.setValue(folder, 'buildDir', this.buildDir);
+
+    coreAPI.setValue(folder, CoreKey.BUILD_DIR, this.buildDir);
     logger.info(
       `Setting build directory for ${folder.uri.fsPath} to ${this.buildDir}`
     );
     logger.info('Config values initialized for:', folder.uri.fsPath);
+    const message = new QtWorkspaceConfigMessage(folder);
+    message.config.add(CoreKey.SELECTED_KIT_PATH);
+    message.config.add(CoreKey.SELECTED_QT_PATHS);
+    message.config.add(featuresKey);
+    message.config.add(CoreKey.BUILD_DIR);
+    coreAPI.notify(message);
   }
   public getStateManager() {
     return this._stateManager;

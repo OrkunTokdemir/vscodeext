@@ -4,35 +4,54 @@
 package handlers
 
 import (
+	"net/http"
 	"qtcli/common"
+
+	"github.com/gin-gonic/gin"
 )
 
-// convenients for error responses
 type ErrorResponse struct {
-	Error common.ErrorWithDetails `json:"error"`
+	Error   string         `json:"error" binding:"required"`
+	Details *common.Issues `json:"details,omitempty"`
 }
 
-func errorMessage(msg string) ErrorResponse {
-	return ErrorResponse{
-		Error: common.ErrorWithDetails{
-			Message: msg,
-		},
+type StatusResponse struct {
+	Status string `json:"status" binding:"required"`
+}
+
+type StatusAndIdResponse struct {
+	Status string `json:"status" binding:"required"`
+	Id     any    `json:"id" binding:"required"`
+}
+
+// convenients
+func ReplyGet[T any](c *gin.Context, data T) {
+	c.JSON(http.StatusOK, data)
+}
+
+func ReplyPost[T any](c *gin.Context, data T) {
+	c.JSON(http.StatusCreated, data)
+}
+
+func ReplyDelete[T any](c *gin.Context, data T) {
+	c.JSON(http.StatusOK, data)
+}
+
+func ReplyStatus(c *gin.Context, msg string) {
+	c.JSON(http.StatusOK, StatusResponse{Status: msg})
+}
+
+func ReplyError(c *gin.Context, msg string, details *common.Issues) {
+	e := ErrorResponse{Error: msg}
+	if details != nil && len(*details) != 0 {
+		e.Details = details
 	}
+
+	c.JSON(http.StatusBadRequest, e)
 }
 
-func errorWithDetails(e common.ErrorWithDetails) ErrorResponse {
-	return ErrorResponse{
-		Error: e,
-	}
-}
-
-// convenients for trivial response
-type SimpleMsgResponse struct {
-	Message string `json:"message"`
-}
-
-func message(msg string) SimpleMsgResponse {
-	return SimpleMsgResponse{
-		Message: msg,
-	}
+func ReplyErrorMsg(c *gin.Context, msg string) {
+	c.JSON(http.StatusBadRequest, ErrorResponse{
+		Error: msg,
+	})
 }

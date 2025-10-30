@@ -10,7 +10,6 @@ import {
   LanguageClient,
   LanguageClientOptions
 } from 'vscode-languageclient/node';
-import untildify from 'untildify';
 
 import {
   createLogger,
@@ -18,10 +17,10 @@ import {
   isError,
   exists,
   OSExeSuffix,
-  QtInsRootConfigName,
   compareVersions,
-  GlobalWorkspace,
-  telemetry
+  CoreKey,
+  telemetry,
+  resolveConfiguration
 } from 'qt-lib';
 import { coreAPI, projectManager } from '@/extension';
 import { EXTENSION_ID } from '@/constants';
@@ -167,14 +166,10 @@ export class Qmlls {
     this._importPaths.clear();
   }
 
-  public static async install(
-    asset: installer.AssetWithTag,
-    options?: { restart: true }
-  ) {
+  public static async install(asset: installer.AssetWithTag) {
     try {
-      if (options?.restart) {
-        await projectManager.stopQmlls();
-      }
+      logger.info('Stopping QML language server to install new version');
+      await projectManager.stopQmlls();
 
       logger.info(`Installing: ${asset.name}, ${asset.tag_name}`);
       await installer.install(asset);
@@ -183,16 +178,14 @@ export class Qmlls {
       logger.warn(isError(error) ? error.message : String(error));
     }
 
-    if (options?.restart) {
-      void projectManager.startQmlls();
-      return QmllsStatus.running;
-    }
-    return QmllsStatus.stopped;
+    void projectManager.startQmlls();
+    return QmllsStatus.running;
   }
   public static async checkAssetAndDecide() {
     // Do not show the progress bar during the startup
     const result = await fetchAssetAndDecide({ silent: true });
     if (result.code === DecisionCode.NeedToUpdate && result.asset) {
+      logger.info('Updating QML language server');
       return Qmlls.install(result.asset);
     }
     return QmllsStatus.stopped;
@@ -203,6 +196,9 @@ export class Qmlls {
       QMLLS_CONFIG,
       this._folder
     );
+    if (this._client?.isRunning()) {
+      return;
+    }
     if (!configs.get<boolean>('enabled', false)) {
       return;
     }
@@ -210,7 +206,7 @@ export class Qmlls {
     try {
       if (configs.get<string>('customExePath')) {
         const customPath = configs.get<string>('customExePath') ?? '';
-        const untildifiedCustomPath = untildify(customPath);
+        const untildifiedCustomPath = resolveConfiguration(customPath);
         const res = spawnSync(untildifiedCustomPath, ['--help'], {
           timeout: 1000
         });
@@ -269,7 +265,9 @@ export class Qmlls {
     let args: string[] = [];
     const customArgs = configs.get<string[]>('customArgs', []);
     if (customArgs.length > 0) {
-      args = customArgs;
+      args = customArgs.map((arg) => {
+        return resolveConfiguration(arg);
+      });
     } else {
       if (verboseOutput) {
         args.push('--verbose');
@@ -295,7 +293,7 @@ export class Qmlls {
       let docsPath = configs.get<string>('customDocsPath', '');
       if (docsPath) {
         // If qt-qml.qmlls.customDocsPath is set, use it instead of the path from the kit
-        docsPath = untildify(docsPath);
+        docsPath = resolveConfiguration(docsPath);
       } else {
         docsPath = this.docsPath ?? '';
       }
@@ -308,7 +306,13 @@ export class Qmlls {
         return `-I${p}`;
       };
 
-      additionalImportPaths.forEach((importPath) => {
+      const resolvedAdditionalImportPaths = additionalImportPaths.map(
+        (importPath) => {
+          return resolveConfiguration(importPath);
+        }
+      );
+
+      resolvedAdditionalImportPaths.forEach((importPath) => {
         args.push(toImportParam(importPath));
       });
 
@@ -365,13 +369,16 @@ export class Qmlls {
   public async stop() {
     if (this._client) {
       if (this._client.isRunning()) {
+        logger.info(`Stopping QML Language Server: "${this._folder.name}"`);
         await this._client
           .stop()
           .then(() => {
-            logger.info('QML Language Server stopped');
+            logger.info(`QML Language Server stopped: "${this._folder.name}"`);
           })
           .catch((e) => {
-            logger.info(`QML Language Server stop failed, ${e}`);
+            logger.error(
+              `QML Language Server stop failed: "${this._folder.name}", ${String(e)}`
+            );
           });
       }
 
@@ -397,15 +404,15 @@ async function findMostRecentExecutableQmlLS(): Promise<
   for (const project of projectManager.getProjects()) {
     const qtInsRoot = coreAPI?.getValue<string>(
       project.folder,
-      QtInsRootConfigName
+      CoreKey.QT_INSTALLATION_ROOT
     );
     if (qtInsRoot) {
       allQtInsRootDirs.push(qtInsRoot);
     }
   }
   const globalQtInsRoot = coreAPI?.getValue<string>(
-    GlobalWorkspace,
-    QtInsRootConfigName
+    CoreKey.GLOBAL_WORKSPACE,
+    CoreKey.QT_INSTALLATION_ROOT
   );
   if (globalQtInsRoot) {
     allQtInsRootDirs.push(globalQtInsRoot);

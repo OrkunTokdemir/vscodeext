@@ -1,14 +1,17 @@
 {
   "compilerOptions": {
     "esModuleInterop": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
-    "module": "commonjs",
+    "module": "node16",
+    "moduleResolution": "node16",
     "target": "ES2020",
     "types": ["node"],
     "outDir": "out",
     "lib": ["ES2020", "DOM"],
     "sourceMap": true,
-    "rootDirs": ["src"],
+    "rootDirs": ["src", "test"],
     "strict": true /* enable all strict type-checking options */,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
@@ -25,5 +28,5 @@
       "@cmd/*": ["src/commands/*"]
     }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "test/**/*"]
 }

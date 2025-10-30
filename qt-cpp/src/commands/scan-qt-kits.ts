@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-
 import { IsWindows, telemetry } from 'qt-lib';
 import { kitManager } from '@/extension';
 import { EXTENSION_ID } from '@/constants';

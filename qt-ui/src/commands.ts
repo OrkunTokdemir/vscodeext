@@ -4,16 +4,21 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as child_process from 'child_process';
+/**
+ * Exposed reference for integration tests.
+ * Holds the last spawned Qt Designer process so tests can close it.
+ */
+export const lastSpawnedDesignerRef: { proc?: child_process.ChildProcess } = {};
 
 import {
   findQtKits,
   createLogger,
-  GlobalWorkspace,
+  CoreKey,
   CORE_EXTENSION_ID,
   telemetry
 } from 'qt-lib';
 import { coreAPI, projectManager } from '@/extension';
-import { locateDesigner } from '@/util';
+import { locateDesignerFromKit } from '@/util';
 
 const logger = createLogger('commands');
 
@@ -25,7 +30,7 @@ export async function openWidgetDesigner() {
   const qtInsRoots: string[] = [];
 
   const globalQtInstallationRoot = coreAPI?.getValue<string>(
-    GlobalWorkspace,
+    CoreKey.GLOBAL_WORKSPACE,
     'qtInstallationRoot'
   );
   if (globalQtInstallationRoot) {
@@ -84,7 +89,7 @@ export async function openWidgetDesigner() {
     }
     groupedQtInstallations[version].push(qtInstallation);
   }
-  // gonvert groupedQtInstallations to array<<version, locatedPath>>
+  // convert groupedQtInstallations to array<<version, locatedPath>>
   const versions: { version: string; locatedPath: string }[] = [];
   for (const version in groupedQtInstallations) {
     if (!groupedQtInstallations[version]) {
@@ -94,7 +99,7 @@ export async function openWidgetDesigner() {
     if (!groupedQtInstallations[version][0]) {
       continue;
     }
-    const locatedPath = await locateDesigner(
+    const locatedPath = await locateDesignerFromKit(
       groupedQtInstallations[version][0]
     );
     if (!locatedPath) {
@@ -129,6 +134,7 @@ export async function openWidgetDesigner() {
     const process = child_process.spawn(selectedQtDesigner.description, [], {
       shell: true
     });
+    lastSpawnedDesignerRef.proc = process;
     process.on('error', (err) => {
       void vscode.window.showErrorMessage(
         `Error while opening Qt Designer: ${err.message}`

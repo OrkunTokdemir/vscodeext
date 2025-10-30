@@ -24,13 +24,32 @@ const extensionConfig = {
   external: ['vscode']
 };
 
+// Config for extension test source code (to be run in a Node-based context)
+/** @type BuildOptions */
+const extensionTestConfig = {
+  ...baseConfig,
+  platform: 'node',
+  mainFields: ['module', 'main'],
+  tsconfig: './tsconfig.json',
+  format: 'cjs',
+  entryPoints: [
+    './test/runTest.ts',
+    './test/helper.mts',
+    './test/suite/index.ts',
+    './test/suite/extension.test.mts',
+    './test/suite/commands.test.mts'
+  ],
+  outdir: './out/test/',
+  external: ['vscode', './reporters/parallel-buffered', './worker.js']
+};
+
 // Config for webview source code (to be run in a web-based context)
 /** @type BuildOptions */
 const webviewConfig = {
   ...baseConfig,
   target: 'es2020',
   format: 'esm',
-  entryPoints: ['./src/editors/ui/webview-ui/main.ts'],
+  entryPoints: ['./src/editors/ui/webview-ui/main.mts'],
   outfile: './out/editors/ui/webview-ui/main.js'
 };
 
@@ -83,10 +102,15 @@ await execCmd('npx tsc --noEmit').then(
       await webCtx.dispose();
       console.log('[watch] build finished');
     } else {
-      // Build extension and webview code
-      await build(extensionConfig);
-      await build(webviewConfig);
-      console.log('build complete');
+      if (args.includes('--test')) {
+        await build(extensionTestConfig);
+        console.log('[tests] build complete');
+      } else {
+        // Build extension and webview code
+        await build(extensionConfig);
+        await build(webviewConfig);
+        console.log('build complete');
+      }
     }
   } catch (err) {
     process.stderr.write(err.stderr);

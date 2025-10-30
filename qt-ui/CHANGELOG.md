@@ -1,6 +1,42 @@
 # Change Log
 
-## 1.5.0 (Apr 10, 2025)
+## 1.9.0 (Sep 11, 2025)
+
+🎉 **Added**
+
+- Introduce variable substitution in configuration paths
+- Supported variables for substitution:
+  - `${workspaceFolder}` for the workspace root directory
+  - `${userHome}` for the user's home directory
+
+## 1.8.0 (Sep 11, 2025)
+
+The same as `1.7.0`
+
+## 1.7.0 (Jul 2, 2025)
+
+🎉 **Added**
+
+- Improve error messages for missing UI editor
+- Add `Open with Text Editor` button
+- Use the built-in text editor with the following extensions for `.ui` files:
+  - [copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot)
+  - [git-graph](https://marketplace.visualstudio.com/items?itemName=mhutchie.git-graph)
+  - [git-graph-3](https://marketplace.visualstudio.com/items?itemName=Gxl.git-graph-3)
+
+⚠️ **Changed**
+
+- Rename `Qt: Open Widget Designer` to `Qt: Open Qt Widgets Designer`
+
+## 1.6.0 (Jul 2, 2025)
+
+The same as `1.5.1`
+
+## 1.5.1 (Apr 16, 2025)
+
+The same as `1.5.0`
+
+## 1.5.0 (Apr 14, 2025)
 
 The same as `1.3.1`
 

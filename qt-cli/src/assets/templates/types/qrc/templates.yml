@@ -1,10 +1,10 @@
 version: "1"
 
-meta: 
+meta:
   type: file
   title: Qt resource file
   description: Creates a Qt resource file (.qrc).
 
 files:
   - in: file.qrc
-    out: '{{ .name }}.qrc'
+    out: '{{ .name }}'

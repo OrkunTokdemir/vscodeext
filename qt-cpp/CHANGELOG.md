@@ -1,6 +1,45 @@
 # Change Log
 
-## 1.5.0 (Apr 10, 2025)
+## 1.9.0 (Sep 11, 2025)
+
+🎉 **Added**
+
+- Introduce `qt-cpp.doNotShowCMakePresetWarning` setting to suppress warnings
+- Warn user when using CMake presets
+- Introduce variable substitution in configuration paths
+- Supported variables for substitution:
+  - `${workspaceFolder}` for the workspace root directory
+  - `${userHome}` for the user's home directory
+- Add `sourceFileMap` to launch configurations so that users can debug through the Qt source code
+- Introduce `qt-cpp.sourceDirectory` command to retrieve the Qt source directory
+- Introduce `qt-cpp.doNotWarnMissingSourceDir` setting to suppress warnings
+
+## 1.8.0 (Sep 11, 2025)
+
+The same as `1.7.0`
+
+## 1.7.0 (Jul 2, 2025)
+
+🎉 **Added**
+
+- Track Qt modules used in user projects
+- Add ARM64 support and update MSVC handling
+- Improve natvis support
+- Generate a kit from `qtpaths` in the environment variable PATH
+
+🐞 **Fixed**
+
+- Don't change `qtpaths` name if it is already set
+
+## 1.6.0 (Jul 2, 2025)
+
+The same as `1.5.1`
+
+## 1.5.1 (Apr 16, 2025)
+
+The same as `1.5.0`
+
+## 1.5.0 (Apr 14, 2025)
 
 🎉 **Added**
 

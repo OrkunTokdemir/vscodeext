@@ -8,7 +8,7 @@ import { createLogger } from 'qt-lib';
 import { Packet, PacketProtocol } from '@debug/packet';
 import { Timer } from '@debug/timer';
 
-const logger = createLogger('project');
+const logger = createLogger('debug-connection');
 
 export enum ServerScheme {
   Tcp = 'tcp',
@@ -16,7 +16,7 @@ export enum ServerScheme {
   Socket = 'unix'
 }
 
-export enum SocketState {
+enum SocketState {
   UnconnectedState = 0,
   HostLookupState = 1,
   ConnectingState = 2,
