@@ -3,7 +3,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { program } from 'commander';
 
 interface PackageJson {
@@ -63,6 +63,35 @@ function main() {
     console.error(errorMessage);
     process.exit(1);
   }
+  // Check if package-lock.json needs to be updated
+
+  console.log(`Checking if "${packageLockJsonPath}" is up to date...`);
+
+  spawnSync('npm install --package-lock-only --ignore-scripts', {
+    shell: true,
+    stdio: 'inherit'
+  });
+
+  const gitDiff = spawnSync(`git diff --quiet -- ${packageLockJsonPath}`, {
+    shell: true,
+    stdio: 'pipe',
+    cwd: targetExtensionRoot
+  });
+
+  if (gitDiff.status !== 0) {
+    console.error(
+      `${packageLockJsonPath} changed! Please run 'npm run install:${targetExtensionRoot}' to update it.`
+    );
+    // remove any changes made to package-lock.json
+    spawnSync(`git checkout -- ${packageLockJsonPath}`, {
+      shell: true,
+      stdio: 'inherit',
+      cwd: targetExtensionRoot
+    });
+    process.exit(1);
+  }
+
+  console.log(`${packageLockJsonPath} is up to date`);
   console.log('All dependencies are installed');
 }
 
