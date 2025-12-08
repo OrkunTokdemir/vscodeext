@@ -39,7 +39,8 @@ const extensionTestConfig = {
     './test/runTest.qml-debug.mts',
     './test/runTestHelper.mts',
     './test/suite/index-qml-debug.mts',
-    './test/suite/qml-debug.test.mts'
+    './test/suite/qml-debug.test.mts',
+    './test/debug-helper.mts'
   ],
   outdir: './out/test/',
   external: ['vscode', './reporters/parallel-buffered', './worker.js']

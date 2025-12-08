@@ -21,9 +21,3 @@ qt_add_qml_module(qml-debug-app
 target_link_libraries(qml-debug-app
     PRIVATE Qt6::Quick
 )
-
-install(TARGETS qml-debug-app
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)

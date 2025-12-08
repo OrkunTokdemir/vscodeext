@@ -36,7 +36,8 @@ async function main() {
     setupVSCodeSettings(userDataDir, qtRoot, {
       // Extra qml-debug-specific settings
       'cmake.configureOnOpen': false,
-      'cmake.buildBeforeRun': true
+      'cmake.buildBeforeRun': true,
+      'cmake.saveBeforeConfiguration': false
     });
 
     // Install core required extensions (CMake Tools + qt-core) via helper
