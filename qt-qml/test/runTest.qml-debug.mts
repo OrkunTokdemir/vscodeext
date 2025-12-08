@@ -41,7 +41,7 @@ async function main() {
 
     // Install core required extensions (CMake Tools + qt-core) via helper
     const extensions: ExtensionInstallInfo[] = [
-      { idOrVsix: 'ms-vscode.cmake-tools', preRelease: true },
+      { idOrVsix: 'ms-vscode.cmake-tools' },
       { idOrVsix: localQtCoreVsix }
     ];
     installRequiredExtensions(cli, args, extensions);

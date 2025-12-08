@@ -148,7 +148,6 @@ export async function setupTestInfrastructure(
     console.log('[runTest.qml-debug] userDataDir:', userDataDir);
     console.log('[runTest.qml-debug] extensionsDir:', extensionsDir);
   }
-
   if (!userDataDir) {
     console.error(
       '[runTest.qml-debug] Could not determine userDataDir from VS Code args.'

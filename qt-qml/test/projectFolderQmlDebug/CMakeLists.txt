@@ -8,21 +8,21 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup()
 
-qt_add_executable(appQmlDebugTest
+qt_add_executable(qml-debug-app
     main.cpp
 )
 
-qt_add_qml_module(appQmlDebugTest
+qt_add_qml_module(qml-debug-app
     URI QmlDebugTest
     VERSION 1.0
     QML_FILES Main.qml
 )
 
-target_link_libraries(appQmlDebugTest
+target_link_libraries(qml-debug-app
     PRIVATE Qt6::Quick
 )
 
-install(TARGETS appQmlDebugTest
+install(TARGETS qml-debug-app
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
