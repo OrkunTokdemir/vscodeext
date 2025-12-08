@@ -220,15 +220,86 @@ export async function getTopFrameId(
 
 /**
  * Get local variables from a debug frame
+ * For QML debugging, thread ID is always 1
  */
-export async function getLocals(session: vscode.DebugSession, frameId: number) {
-  const { scopes } = await session.customRequest('scopes', { frameId });
+export async function getLocals(session: vscode.DebugSession) {
+  // QML debugger always uses thread ID 1
+  const threadId = 1;
+
+  if (process.env.QT_TEST_DEBUG === '1') {
+    console.log('[qml-debug] Using threadId:', threadId);
+  }
+
+  // Get fresh stack trace
+  const st = await session.customRequest('stackTrace', { threadId });
+
+  if (process.env.QT_TEST_DEBUG === '1') {
+    console.log(
+      '[qml-debug] StackTrace response:',
+      JSON.stringify(st, null, 2)
+    );
+  }
+
+  const frame = st?.stackFrames?.[0];
+  if (!frame) {
+    throw new Error('No stack frame found');
+  }
+
+  const frameId = frame.id;
+
+  if (process.env.QT_TEST_DEBUG === '1') {
+    console.log('[qml-debug] Requesting scopes for frameId:', frameId);
+    console.log('[qml-debug] Full frame info:', JSON.stringify(frame, null, 2));
+  }
+
+  const scopesResponse = await session.customRequest('scopes', { frameId });
+  const scopes = scopesResponse?.scopes;
+
+  // Debug: log all available scopes with full details
+  if (process.env.QT_TEST_DEBUG === '1') {
+    console.log(
+      '[qml-debug] Scopes response:',
+      JSON.stringify(scopesResponse, null, 2)
+    );
+    console.log(
+      '[qml-debug] Available scopes:',
+      scopes
+        ?.map((s: any) => `${s.name} (ref=${s.variablesReference})`)
+        .join(', ') || '(none)'
+    );
+  }
+
+  // Try to find a locals scope - QML debugger might use different names
   const localsScope =
-    scopes?.find((sc: any) => /locals?/i.test(sc.name)) ?? scopes?.[0];
-  if (!localsScope) throw new Error('No Locals scope found');
+    scopes?.find((sc: any) => /locals?/i.test(sc.name)) ??
+    scopes?.find((sc: any) => /context/i.test(sc.name)) ??
+    scopes?.[0];
+
+  if (!localsScope) {
+    console.error('[qml-debug] No scope found. Available scopes:', scopes);
+    throw new Error('No Locals scope found');
+  }
+
+  if (process.env.QT_TEST_DEBUG === '1') {
+    console.log(
+      '[qml-debug] Using scope:',
+      localsScope.name,
+      'variablesReference:',
+      localsScope.variablesReference
+    );
+  }
+
   const { variables } = await session.customRequest('variables', {
     variablesReference: localsScope.variablesReference
   });
+
+  if (process.env.QT_TEST_DEBUG === '1') {
+    console.log(
+      '[qml-debug] Variables response:',
+      JSON.stringify(variables, null, 2)
+    );
+  }
+
   return variables ?? [];
 }
 
@@ -244,14 +315,13 @@ export interface DebugVariable {
  */
 export async function getFlattenedLocals(
   session: vscode.DebugSession | undefined,
-  frameId: number,
   maxDepth = 3
 ): Promise<DebugVariable[]> {
   if (!session) {
     throw new Error('[qml-debug] No active debug session');
   }
 
-  const roots = await getLocals(session, frameId);
+  const roots = await getLocals(session);
   const acc: DebugVariable[] = [];
 
   async function walkVar(v: any, prefix: string, depth: number): Promise<void> {

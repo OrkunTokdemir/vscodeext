@@ -12,6 +12,9 @@ qt_add_executable(qml-debug-app
     main.cpp
 )
 
+# Enable QML debugging
+target_compile_definitions(qml-debug-app PRIVATE QT_QML_DEBUG)
+
 qt_add_qml_module(qml-debug-app
     URI QmlDebugTest
     VERSION 1.0
