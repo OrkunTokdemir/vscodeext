@@ -24,13 +24,28 @@ import {
   makeQmlDebugConfig,
   startDebugAndWaitForStop,
   stopDebugSession,
-  getLocals,
-  getFlattenedLocals,
-  type DebugVariable
+  evaluateExpression
 } from '../debug-helper.mts';
 
 const FS_SETTLE_DELAY_MS = 500;
 const DISK_FLUSH_DELAY_MS = 1000;
+
+// ---------------------------------------------------------------------------
+// QML Debugger Integration Tests
+// ---------------------------------------------------------------------------
+// This test suite validates QML debugging functionality including:
+// 1. Breakpoint hits and stack traces
+// 2. Variable evaluation via DAP evaluate request
+// 3. Execution control (continue, step, etc.)
+//
+// Important notes about QML debugging:
+// - QML object properties (counter, message, etc.) are NOT JavaScript local variables
+// - They do NOT appear in DAP scopes (Global, Local, Closure scopes)
+// - QML properties MUST be accessed via DAP 'evaluate' request
+// - JavaScript local variables in QML functions DO appear in scopes
+//
+// Run with: QT_TEST_DEBUG=1 npm run test:qt-qml -- --qt-root="/path/to/Qt"
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Shared debug logging + sandbox lifecycle for this test file
@@ -87,7 +102,7 @@ describe('QML Debugger integration', function () {
           binaryDir: buildDir,
           cacheVariables: {
             CMAKE_BUILD_TYPE: 'Debug',
-            CMAKE_PREFIX_PATH: qtEnv.leaf,
+            CMAKE_PREFIX_PATH: qtEnv.leaf
           }
         }
       ]
@@ -202,45 +217,231 @@ describe('QML Debugger integration', function () {
 
         dlog('[qml-debug] Successfully hit QML breakpoint at line', stop.line);
 
-        // Try to get variables (may not work if QML debugger isn't fully supported)
-        try {
-          const locals = await getLocals(session);
-          dlog(
-            '[qml-debug] Locals found:',
-            locals.map((v: any) => v.name).join(', ')
-          );
+        // Test basic debugging functionality is working
+        expect(session, 'Debug session should be active').to.exist;
+        expect(stop.threadId, 'Should have thread ID').to.exist;
+        expect(stop.frameId, 'Should have frame ID').to.exist;
+      } finally {
+        await stopDebugSession(session);
+        await delay(500);
+      }
+    } finally {
+      removeBps();
+    }
+  });
 
-          const flatLocals = await getFlattenedLocals(session);
-          dlog('[qml-debug] Flattened locals count:', flatLocals.length);
+  it('can evaluate QML variable expressions', async function () {
+    const wsFolder = getWorkspaceFolderOrThrow();
+    const projectDir = wsFolder.uri.fsPath;
 
-          // Verify expected QML properties are present
-          const counterVar = flatLocals.find(
-            (v: DebugVariable) => v.name === 'counter'
-          );
-          const messageVar = flatLocals.find(
-            (v: DebugVariable) => v.name === 'message'
-          );
+    // Prepare breakpoints - we want to stop after counter and message are set
+    const { breakpoints } = await prepareQmlBreakpointsFromMarkers(
+      projectDir,
+      'Main.qml',
+      'BREAK_HERE'
+    );
 
-          if (counterVar) {
-            dlog('[qml-debug] counter:', counterVar.value);
-            expect(counterVar.value, 'counter should be 42').to.satisfy(
-              (val: string) => val === '42' || val.includes('42')
-            );
-          }
+    const removeBps = addBreakpoints(breakpoints);
+    await waitForVSCodeIdle();
 
-          if (messageVar) {
-            dlog('[qml-debug] message:', messageVar.value);
-            expect(messageVar.value, 'message should contain text').to.be.a(
-              'string'
-            ).and.not.empty;
-          }
+    try {
+      const debugConfig = await makeQmlDebugConfig();
 
-          dlog('[qml-debug] Successfully inspected QML variables!');
-        } catch (err) {
-          // Variable inspection may not be supported by all QML debuggers
-          console.warn('[qml-debug] Variable inspection not available:', err);
-          // Test still passes if we hit the breakpoint
+      // Start debugging and wait for first stop
+      const { session, stops } = await startDebugAndWaitForStop(
+        wsFolder,
+        debugConfig,
+        { timeoutMs: 60000 }
+      );
+
+      try {
+        const stop = stops[0]!;
+        const frameId = stop.frameId;
+
+        dlog('[qml-debug] Testing variable evaluation at breakpoint');
+
+        // Try to evaluate QML property expressions
+        // Evaluate counter variable
+        const counterResult = await evaluateExpression(
+          session,
+          'counter',
+          frameId
+        );
+        dlog('[qml-debug] counter =', counterResult.result);
+
+        // After the first breakpoint, counter should be 42
+        if (counterResult.result !== undefined) {
+          expect(
+            counterResult.result,
+            'counter should be 42 after assignment'
+          ).to.satisfy((val: string) => val === '42' || val.includes('42'));
         }
+
+        // Evaluate message variable
+        const messageResult = await evaluateExpression(
+          session,
+          'message',
+          frameId
+        );
+        dlog('[qml-debug] message =', messageResult.result);
+
+        if (messageResult.result !== undefined) {
+          expect(
+            messageResult.result,
+            'message should contain "Debug test running"'
+          ).to.include('Debug test running');
+        }
+
+        // Evaluate items array
+        const itemsResult = await evaluateExpression(session, 'items', frameId);
+        dlog('[qml-debug] items =', itemsResult.result);
+
+        // Evaluate isActive boolean
+        const isActiveResult = await evaluateExpression(
+          session,
+          'isActive',
+          frameId
+        );
+        dlog('[qml-debug] isActive =', isActiveResult.result);
+
+        if (isActiveResult.result !== undefined) {
+          expect(isActiveResult.result, 'isActive should be true').to.satisfy(
+            (val: string) => val === 'true' || val.includes('true')
+          );
+        }
+
+        // Try evaluating an expression
+        const exprResult = await evaluateExpression(
+          session,
+          'counter + 1',
+          frameId
+        );
+        dlog('[qml-debug] counter + 1 =', exprResult.result);
+
+        if (exprResult.result !== undefined) {
+          expect(exprResult.result, 'counter + 1 should be 43').to.satisfy(
+            (val: string) => val === '43' || val.includes('43')
+          );
+        }
+
+        dlog('[qml-debug] Successfully evaluated QML variables!');
+      } finally {
+        await stopDebugSession(session);
+        await delay(500);
+      }
+    } finally {
+      removeBps();
+    }
+  });
+
+  it('can retrieve stack trace information', async function () {
+    const wsFolder = getWorkspaceFolderOrThrow();
+    const projectDir = wsFolder.uri.fsPath;
+
+    const { breakpoints } = await prepareQmlBreakpointsFromMarkers(
+      projectDir,
+      'Main.qml',
+      'BREAK_HERE'
+    );
+
+    const removeBps = addBreakpoints(breakpoints);
+    await waitForVSCodeIdle();
+
+    try {
+      const debugConfig = await makeQmlDebugConfig();
+      const { session, stops } = await startDebugAndWaitForStop(
+        wsFolder,
+        debugConfig,
+        { timeoutMs: 60000 }
+      );
+
+      try {
+        const stop = stops[0]!;
+
+        // Get full stack trace
+        const threadId = stop.threadId ?? 1;
+        const stackTrace = await session.customRequest('stackTrace', {
+          threadId
+        });
+
+        dlog('[qml-debug] Stack trace:', JSON.stringify(stackTrace, null, 2));
+
+        expect(stackTrace, 'Should have stack trace').to.exist;
+        expect(stackTrace.stackFrames, 'Should have stack frames').to.be.an(
+          'array'
+        );
+        expect(
+          stackTrace.stackFrames.length,
+          'Should have at least one frame'
+        ).to.be.greaterThan(0);
+
+        const topFrame = stackTrace.stackFrames[0];
+        expect(topFrame.source, 'Frame should have source').to.exist;
+        expect(
+          topFrame.source.path,
+          'Frame source should have path'
+        ).to.include('Main.qml');
+        expect(
+          topFrame.line,
+          'Frame should have line number'
+        ).to.be.greaterThan(0);
+        expect(topFrame.name, 'Frame should have name').to.be.a('string').and
+          .not.empty;
+
+        dlog('[qml-debug] Stack frame validated:', {
+          source: topFrame.source.path,
+          line: topFrame.line,
+          name: topFrame.name
+        });
+      } finally {
+        await stopDebugSession(session);
+        await delay(500);
+      }
+    } finally {
+      removeBps();
+    }
+  });
+
+  it('can continue execution after breakpoint', async function () {
+    const wsFolder = getWorkspaceFolderOrThrow();
+    const projectDir = wsFolder.uri.fsPath;
+
+    const { breakpoints } = await prepareQmlBreakpointsFromMarkers(
+      projectDir,
+      'Main.qml',
+      'BREAK_HERE'
+    );
+
+    const removeBps = addBreakpoints(breakpoints);
+    await waitForVSCodeIdle();
+
+    try {
+      const debugConfig = await makeQmlDebugConfig();
+      const { session, stops } = await startDebugAndWaitForStop(
+        wsFolder,
+        debugConfig,
+        { timeoutMs: 60000 }
+      );
+
+      try {
+        const stop = stops[0]!;
+        expect(stop.threadId, 'Should have thread ID').to.exist;
+
+        // Try to continue execution
+        await session.customRequest('continue', {
+          threadId: stop.threadId
+        });
+
+        dlog('[qml-debug] Successfully continued execution');
+
+        // Give it a moment to continue
+        await delay(500);
+
+        // Session should still be active
+        expect(
+          vscode.debug.activeDebugSession,
+          'Debug session should still be active'
+        ).to.exist;
       } finally {
         await stopDebugSession(session);
         await delay(500);

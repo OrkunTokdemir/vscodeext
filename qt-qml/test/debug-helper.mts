@@ -361,3 +361,43 @@ export async function getFlattenedLocals(
 
   return acc;
 }
+
+/**
+ * Evaluate an expression in the current debug context
+ * This uses the DAP 'evaluate' request which may work even when scopes don't
+ */
+export async function evaluateExpression(
+  session: vscode.DebugSession,
+  expression: string,
+  frameId?: number
+): Promise<{ result: string; type?: string; variablesReference?: number }> {
+  if (process.env.QT_TEST_DEBUG === '1') {
+    console.log(`[qml-debug] Evaluating expression: "${expression}"`);
+  }
+
+  try {
+    const response = await session.customRequest('evaluate', {
+      expression,
+      frameId,
+      context: 'watch' // Use 'watch' context for variable evaluation
+    });
+
+    if (process.env.QT_TEST_DEBUG === '1') {
+      console.log(
+        '[qml-debug] Evaluate response:',
+        JSON.stringify(response, null, 2)
+      );
+    }
+
+    return {
+      result: response.result,
+      type: response.type,
+      variablesReference: response.variablesReference
+    };
+  } catch (err) {
+    if (process.env.QT_TEST_DEBUG === '1') {
+      console.log('[qml-debug] Evaluate failed:', err);
+    }
+    throw err;
+  }
+}
