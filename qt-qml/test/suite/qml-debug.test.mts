@@ -451,6 +451,160 @@ describe('QML Debugger integration', function () {
     }
   });
 
+  it('can step over (next) in QML code', async function () {
+    const wsFolder = getWorkspaceFolderOrThrow();
+    const projectDir = wsFolder.uri.fsPath;
+
+    const { breakpoints } = await prepareQmlBreakpointsFromMarkers(
+      projectDir,
+      'Main.qml',
+      'BREAK_HERE'
+    );
+
+    const removeBps = addBreakpoints(breakpoints);
+    await waitForVSCodeIdle();
+
+    try {
+      const debugConfig = await makeQmlDebugConfig();
+      const { session, stops } = await startDebugAndWaitForStop(
+        wsFolder,
+        debugConfig,
+        { timeoutMs: 60000 }
+      );
+
+      try {
+        const stop = stops[0]!;
+        const initialLine = stop.line;
+
+        dlog('[qml-debug] Initial stop at line:', initialLine);
+        expect(stop.threadId, 'Should have thread ID').to.exist;
+
+        // Perform step over (next)
+        await session.customRequest('next', {
+          threadId: stop.threadId
+        });
+
+        dlog('[qml-debug] Step over command sent');
+
+        // Give debugger time to step
+        await delay(1000);
+
+        // Verify session is still active
+        expect(
+          vscode.debug.activeDebugSession,
+          'Debug session should still be active after step over'
+        ).to.exist;
+      } finally {
+        await stopDebugSession(session);
+        await delay(500);
+      }
+    } finally {
+      removeBps();
+    }
+  });
+
+  it('can step into function calls', async function () {
+    const wsFolder = getWorkspaceFolderOrThrow();
+    const projectDir = wsFolder.uri.fsPath;
+
+    const { breakpoints } = await prepareQmlBreakpointsFromMarkers(
+      projectDir,
+      'Main.qml',
+      'BREAK_HERE'
+    );
+
+    const removeBps = addBreakpoints(breakpoints);
+    await waitForVSCodeIdle();
+
+    try {
+      const debugConfig = await makeQmlDebugConfig();
+      const { session, stops } = await startDebugAndWaitForStop(
+        wsFolder,
+        debugConfig,
+        { timeoutMs: 60000 }
+      );
+
+      try {
+        const stop = stops[0]!;
+
+        dlog('[qml-debug] Initial stop for step in test');
+        expect(stop.threadId, 'Should have thread ID').to.exist;
+
+        // Perform step in
+        await session.customRequest('stepIn', {
+          threadId: stop.threadId
+        });
+
+        dlog('[qml-debug] Step in command sent');
+
+        // Give debugger time to step
+        await delay(1000);
+
+        // Verify session is still active
+        expect(
+          vscode.debug.activeDebugSession,
+          'Debug session should still be active after step in'
+        ).to.exist;
+      } finally {
+        await stopDebugSession(session);
+        await delay(500);
+      }
+    } finally {
+      removeBps();
+    }
+  });
+
+  it('can step out of function calls', async function () {
+    const wsFolder = getWorkspaceFolderOrThrow();
+    const projectDir = wsFolder.uri.fsPath;
+
+    const { breakpoints } = await prepareQmlBreakpointsFromMarkers(
+      projectDir,
+      'Main.qml',
+      'BREAK_HERE'
+    );
+
+    const removeBps = addBreakpoints(breakpoints);
+    await waitForVSCodeIdle();
+
+    try {
+      const debugConfig = await makeQmlDebugConfig();
+      const { session, stops } = await startDebugAndWaitForStop(
+        wsFolder,
+        debugConfig,
+        { timeoutMs: 60000 }
+      );
+
+      try {
+        const stop = stops[0]!;
+
+        dlog('[qml-debug] Initial stop for step out test');
+        expect(stop.threadId, 'Should have thread ID').to.exist;
+
+        // Perform step out
+        await session.customRequest('stepOut', {
+          threadId: stop.threadId
+        });
+
+        dlog('[qml-debug] Step out command sent');
+
+        // Give debugger time to step
+        await delay(1000);
+
+        // Verify session is still active
+        expect(
+          vscode.debug.activeDebugSession,
+          'Debug session should still be active after step out'
+        ).to.exist;
+      } finally {
+        await stopDebugSession(session);
+        await delay(500);
+      }
+    } finally {
+      removeBps();
+    }
+  });
+
   after('cleanup CMake configuration', async function () {
     // Cleanup after all tests
     const wsFolder = getWorkspaceFolderOrThrow();
