@@ -27,6 +27,16 @@ import { QMLProjectManager, createQMLProject } from '@/project.mjs';
 import { registerResetCommand } from '@cmd/reset.mjs';
 import { registerQmlDebugAdapterFactory } from '@debug/debug-adapter.mjs';
 import {
+  registerStartQmlPreviewCommand,
+  registerStartQmlPreviewForCurrentFileCommand,
+  registerAttachQmlPreviewCommand,
+  registerStopQmlPreviewCommand,
+  registerReloadQmlPreviewCommand,
+  registerSetQmlPreviewZoomCommand,
+  registerClearQmlPreviewCacheCommand,
+  disposePreviewManager
+} from '@cmd/qml-preview.mjs';
+import {
   acquirePortTaskProvider,
   AcquirePortTaskProvider
 } from './tasks/acquire-port.mjs';
@@ -71,7 +81,14 @@ export async function activate(context: vscode.ExtensionContext) {
     registerDownloadQmllsCommand(),
     vscode.languages.registerColorProvider('qml', createColorProvider()),
     registerResetCommand(),
-    registerQmlDebugAdapterFactory()
+    registerQmlDebugAdapterFactory(),
+    registerStartQmlPreviewCommand(),
+    registerStartQmlPreviewForCurrentFileCommand(),
+    registerAttachQmlPreviewCommand(),
+    registerStopQmlPreviewCommand(),
+    registerReloadQmlPreviewCommand(),
+    registerSetQmlPreviewZoomCommand(),
+    registerClearQmlPreviewCacheCommand()
   );
   taskProvider = vscode.tasks.registerTaskProvider(
     AcquirePortTaskProvider.type,
@@ -98,6 +115,7 @@ export function deactivate() {
   logger.info(`Deactivating ${consts.EXTENSION_ID}`);
   telemetry.dispose();
   projectManager.dispose();
+  disposePreviewManager();
   if (taskProvider) {
     taskProvider.dispose();
   }

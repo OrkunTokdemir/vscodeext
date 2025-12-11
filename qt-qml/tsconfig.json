@@ -28,7 +28,8 @@
       "@cmd/*": ["src/commands/*"],
       "@task/*": ["src/tasks/*"],
       "@util/*": ["src/util/*"],
-      "@debug/*": ["src/debug/*"]
+      "@debug/*": ["src/debug/*"],
+      "@preview/*": ["src/preview/*"]
     }
   },
   "include": ["src/**/*", "test/**/*"]
