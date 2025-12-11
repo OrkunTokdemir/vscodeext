@@ -50,6 +50,31 @@
         "command": "qt-qml.downloadQmlls",
         "title": "%qt-qml.command.downloadQmlls.title%",
         "category": "Qt"
+      },
+      {
+        "command": "qt-qml.startQmlPreview",
+        "title": "%qt-qml.command.startQmlPreview.title%",
+        "category": "Qt"
+      },
+      {
+        "command": "qt-qml.stopQmlPreview",
+        "title": "%qt-qml.command.stopQmlPreview.title%",
+        "category": "Qt"
+      },
+      {
+        "command": "qt-qml.reloadQmlPreview",
+        "title": "%qt-qml.command.reloadQmlPreview.title%",
+        "category": "Qt"
+      },
+      {
+        "command": "qt-qml.setQmlPreviewZoom",
+        "title": "%qt-qml.command.setQmlPreviewZoom.title%",
+        "category": "Qt"
+      },
+      {
+        "command": "qt-qml.clearQmlPreviewCache",
+        "title": "%qt-qml.command.clearQmlPreviewCache.title%",
+        "category": "Qt"
       }
     ],
     "languages": [

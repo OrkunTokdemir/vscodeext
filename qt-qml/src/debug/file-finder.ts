@@ -36,10 +36,13 @@ export class FileFinder {
     if (fileUrlParts.length !== 2 || !fileUrlPath) {
       throw new Error('Invalid file URL');
     }
-    const filePath = this._cache.get(fileUrlPath);
+
+    // Try exact match from cache first
+    let filePath = this._cache.get(fileUrlPath);
     if (filePath) {
       return filePath;
     }
+
     const allQrcFiles = await vscode.workspace.findFiles('**/*.qrc');
     for (const folder of additionalFolders) {
       const pattern = new vscode.RelativePattern(folder, '**/*.qrc');
@@ -59,7 +62,23 @@ export class FileFinder {
         }
       }
     }
-    return this._cache.get(fileUrlPath);
+
+    // Try exact match again after refreshing cache
+    filePath = this._cache.get(fileUrlPath);
+    if (filePath) {
+      return filePath;
+    }
+
+    // If exact match fails, try suffix matching
+    // This handles cases where QRC has a different prefix
+    // e.g., looking for "/demos/calqlatr/Main.qml" but QRC has "/qt/qml/demos/calqlatr/Main.qml"
+    for (const [qrcPath, fsPath] of this._cache.entries()) {
+      if (qrcPath.endsWith(fileUrlPath)) {
+        return fsPath;
+      }
+    }
+
+    return undefined;
   }
   async checkProjectFiles(originalPath: string) {
     // Filter .qml and .js files
