@@ -1,9 +1,33 @@
+// QRC path to real file mapping cache
+let qrcPathMap: Map<string, string> | undefined;
+async function buildQrcPathMap(): Promise<Map<string, string>> {
+  if (qrcPathMap) {
+    return qrcPathMap;
+  }
+  qrcPathMap = new Map();
+  // Find all .qrc files in workspace
+  const qrcFiles = await vscode.workspace.findFiles('**/*.qrc');
+  const parser = new QRCParser();
+  for (const qrcFile of qrcFiles) {
+    try {
+      const mapping = parser.parseQRCFile(qrcFile.fsPath);
+      if (mapping) {
+        for (const [qrcPath, fsPath] of mapping.entries()) {
+          qrcPathMap.set(qrcPath, fsPath);
+        }
+      }
+    } catch (e) {
+      logger.warn('Failed to parse QRC file:', qrcFile.fsPath, String(e));
+    }
+  }
+  return qrcPathMap;
+}
 // Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as path from 'path';
+// import * as path from 'path';
 
 import {
   QmlDebugConnection,
@@ -151,18 +175,37 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       return;
     }
 
-    // Try to find the file or directory
+    // Try to find the file or directory directly
     let filePath = await this._fileFinder.findFile(requestedPath);
 
-    // If not found directly, try to infer directory from QRC files
+    // If not found, try QRC mapping
     if (
       !filePath &&
-      (requestedPath.startsWith('::') || requestedPath.startsWith('qrc:'))
+      (requestedPath.startsWith(':/') ||
+        requestedPath.startsWith('qrc:') ||
+        requestedPath.startsWith('::'))
     ) {
-      // Try to find any file that starts with this path + /
-      // This handles directory imports from QRC
-      const dirPrefix = requestedPath.replace(/^(qrc:)?:/, '') + '/';
-      filePath = await this.findDirectoryFromQrc(dirPrefix);
+      // Normalize QRC path (remove qrc: or :: prefix)
+      const qrcKey = requestedPath.replace(/^qrc:|^::/, ':/');
+      // Try both with and without leading colon
+      const qrcMap = await buildQrcPathMap();
+      filePath = qrcMap.get(qrcKey) ?? qrcMap.get(qrcKey.replace(/^:/, ''));
+    }
+
+    // If still not found, try suffix match in QRC map
+    if (
+      !filePath &&
+      (requestedPath.startsWith(':/') ||
+        requestedPath.startsWith('qrc:') ||
+        requestedPath.startsWith('::'))
+    ) {
+      const qrcMap = await buildQrcPathMap();
+      for (const [qrcPath, fsPath] of qrcMap.entries()) {
+        if (qrcPath.endsWith(requestedPath.replace(/^qrc:|^::/, ':/'))) {
+          filePath = fsPath;
+          break;
+        }
+      }
     }
 
     if (filePath) {
@@ -201,78 +244,78 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     this._previewClient.announceError(requestedPath);
   }
 
-  private async findDirectoryFromQrc(
-    dirPrefix: string
-  ): Promise<string | undefined> {
-    // Try to find any file that starts with this directory prefix
-    // For example, if looking for "/demos/calqlatr/content/",
-    // find files ending with "/demos/calqlatr/content/Display.qml" in QRC
+  // private async findDirectoryFromQrc(
+  //   dirPrefix: string
+  // ): Promise<string | undefined> {
+  //   // Try to find any file that starts with this directory prefix
+  //   // For example, if looking for "/demos/calqlatr/content/",
+  //   // find files ending with "/demos/calqlatr/content/Display.qml" in QRC
 
-    // Get all QRC files
-    const allQrcFiles = await vscode.workspace.findFiles('**/*.qrc');
-    if (this._buildDirs.length > 0) {
-      for (const buildDir of this._buildDirs) {
-        const pattern = new vscode.RelativePattern(buildDir, '**/*.qrc');
-        const additionalQrcFiles = await vscode.workspace.findFiles(pattern);
-        allQrcFiles.push(...additionalQrcFiles);
-      }
-    }
+  //   // Get all QRC files
+  //   const allQrcFiles = await vscode.workspace.findFiles('**/*.qrc');
+  //   if (this._buildDirs.length > 0) {
+  //     for (const buildDir of this._buildDirs) {
+  //       const pattern = new vscode.RelativePattern(buildDir, '**/*.qrc');
+  //       const additionalQrcFiles = await vscode.workspace.findFiles(pattern);
+  //       allQrcFiles.push(...additionalQrcFiles);
+  //     }
+  //   }
 
-    // Parse all QRC files and find entries that match this directory
-    const parser = new QRCParser();
-    for (const qrcFile of allQrcFiles) {
-      const mapping = parser.parseQRCFile(qrcFile.fsPath);
-      if (!mapping) {
-        continue;
-      }
+  //   // Parse all QRC files and find entries that match this directory
+  //   const parser = new QRCParser();
+  //   for (const qrcFile of allQrcFiles) {
+  //     const mapping = parser.parseQRCFile(qrcFile.fsPath);
+  //     if (!mapping) {
+  //       continue;
+  //     }
 
-      // Look for any entry where the QRC path ends with the directory prefix
-      for (const [qrcPath, fsPath] of mapping.entries()) {
-        // Check if this entry is inside the requested directory
-        // e.g., qrcPath="/qt/qml/demos/calqlatr/content/Display.qml" should match dirPrefix="/demos/calqlatr/content/"
-        if (
-          qrcPath.endsWith(dirPrefix.substring(0, dirPrefix.length - 1)) ||
-          qrcPath.includes(dirPrefix)
-        ) {
-          // Extract the directory from the filesystem path
-          const dirPath = path.dirname(fsPath);
-          if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
-            return dirPath;
-          }
-        }
-      }
-    }
+  //     // Look for any entry where the QRC path ends with the directory prefix
+  //     for (const [qrcPath, fsPath] of mapping.entries()) {
+  //       // Check if this entry is inside the requested directory
+  //       // e.g., qrcPath="/qt/qml/demos/calqlatr/content/Display.qml" should match dirPrefix="/demos/calqlatr/content/"
+  //       if (
+  //         qrcPath.endsWith(dirPrefix.substring(0, dirPrefix.length - 1)) ||
+  //         qrcPath.includes(dirPrefix)
+  //       ) {
+  //         // Extract the directory from the filesystem path
+  //         const dirPath = path.dirname(fsPath);
+  //         if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
+  //           return dirPath;
+  //         }
+  //       }
+  //     }
+  //   }
 
-    // Try a different approach: search workspace for a directory matching the pattern
-    const pathParts = dirPrefix.split('/').filter((p) => p);
-    if (pathParts.length > 0) {
-      const lastPart = pathParts[pathParts.length - 1];
-      const dirs = await vscode.workspace.findFiles(
-        `**/${lastPart}`,
-        '**/node_modules/**',
-        10
-      );
+  //   // Try a different approach: search workspace for a directory matching the pattern
+  //   const pathParts = dirPrefix.split('/').filter((p) => p);
+  //   if (pathParts.length > 0) {
+  //     const lastPart = pathParts[pathParts.length - 1];
+  //     const dirs = await vscode.workspace.findFiles(
+  //       `**/${lastPart}`,
+  //       '**/node_modules/**',
+  //       10
+  //     );
 
-      for (const dir of dirs) {
-        const dirPath = dir.fsPath;
-        if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
-          return dirPath;
-        }
-        // Check parent directory
-        const parentDir = dirPath.substring(0, dirPath.lastIndexOf('/'));
-        const parentName = parentDir.substring(parentDir.lastIndexOf('/') + 1);
-        if (
-          parentName === lastPart &&
-          fs.existsSync(parentDir) &&
-          fs.statSync(parentDir).isDirectory()
-        ) {
-          return parentDir;
-        }
-      }
-    }
+  //     for (const dir of dirs) {
+  //       const dirPath = dir.fsPath;
+  //       if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
+  //         return dirPath;
+  //       }
+  //       // Check parent directory
+  //       const parentDir = dirPath.substring(0, dirPath.lastIndexOf('/'));
+  //       const parentName = parentDir.substring(parentDir.lastIndexOf('/') + 1);
+  //       if (
+  //         parentName === lastPart &&
+  //         fs.existsSync(parentDir) &&
+  //         fs.statSync(parentDir).isDirectory()
+  //       ) {
+  //         return parentDir;
+  //       }
+  //     }
+  //   }
 
-    return undefined;
-  }
+  //   return undefined;
+  // }
 
   private static findRemotePath(localPath: string): string | undefined {
     // For now, use the local path as remote path

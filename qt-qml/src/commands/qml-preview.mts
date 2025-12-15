@@ -49,9 +49,11 @@ export function registerStartQmlPreviewCommand() {
       previewManager = new QmlPreviewConnectionManager();
       previewManager.setupFileWatcher();
 
-      // Set up FPS handler
+      // Set up FPS handler (log only)
       previewManager.setFpsHandler((fps: FpsInfo) => {
-        void vscode.window.showInformationMessage(
+        // Log FPS info to the extension output
+        // eslint-disable-next-line no-console
+        console.log(
           `QML Preview: ${fps.numSyncs} fps (${fps.minSync}ms-${fps.maxSync}ms)`
         );
       });
