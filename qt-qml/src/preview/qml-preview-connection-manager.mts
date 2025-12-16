@@ -1,27 +1,3 @@
-// QRC path to real file mapping cache
-let qrcPathMap: Map<string, string> | undefined;
-async function buildQrcPathMap(): Promise<Map<string, string>> {
-  if (qrcPathMap) {
-    return qrcPathMap;
-  }
-  qrcPathMap = new Map();
-  // Find all .qrc files in workspace
-  const qrcFiles = await vscode.workspace.findFiles('**/*.qrc');
-  const parser = new QRCParser();
-  for (const qrcFile of qrcFiles) {
-    try {
-      const mapping = parser.parseQRCFile(qrcFile.fsPath);
-      if (mapping) {
-        for (const [qrcPath, fsPath] of mapping.entries()) {
-          qrcPathMap.set(qrcPath, fsPath);
-        }
-      }
-    } catch (e) {
-      logger.warn('Failed to parse QRC file:', qrcFile.fsPath, String(e));
-    }
-  }
-  return qrcPathMap;
-}
 // Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
@@ -35,7 +11,6 @@ import {
 } from '@debug/debug-connection.mjs';
 import { QmlPreviewClient, FpsInfo } from './qml-preview-client.mjs';
 import { FileFinder } from '@debug/file-finder.js';
-import { QRCParser } from '@debug/qrc-parser.js';
 import { createLogger } from 'qt-lib';
 
 const logger = createLogger('qml-preview-manager');
@@ -176,37 +151,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     }
 
     // Try to find the file or directory directly
-    let filePath = await this._fileFinder.findFile(requestedPath);
-
-    // If not found, try QRC mapping
-    if (
-      !filePath &&
-      (requestedPath.startsWith(':/') ||
-        requestedPath.startsWith('qrc:') ||
-        requestedPath.startsWith('::'))
-    ) {
-      // Normalize QRC path (remove qrc: or :: prefix)
-      const qrcKey = requestedPath.replace(/^qrc:|^::/, ':/');
-      // Try both with and without leading colon
-      const qrcMap = await buildQrcPathMap();
-      filePath = qrcMap.get(qrcKey) ?? qrcMap.get(qrcKey.replace(/^:/, ''));
-    }
-
-    // If still not found, try suffix match in QRC map
-    if (
-      !filePath &&
-      (requestedPath.startsWith(':/') ||
-        requestedPath.startsWith('qrc:') ||
-        requestedPath.startsWith('::'))
-    ) {
-      const qrcMap = await buildQrcPathMap();
-      for (const [qrcPath, fsPath] of qrcMap.entries()) {
-        if (qrcPath.endsWith(requestedPath.replace(/^qrc:|^::/, ':/'))) {
-          filePath = fsPath;
-          break;
-        }
-      }
-    }
+    const filePath = await this._fileFinder.findFile(requestedPath);
 
     if (filePath) {
       // Store bidirectional mapping between local path and QRC path
