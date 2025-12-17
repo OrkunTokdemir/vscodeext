@@ -11,6 +11,7 @@ import {
 } from '@debug/debug-connection.mjs';
 import { QmlPreviewClient, FpsInfo } from './qml-preview-client.mjs';
 import { FileFinder } from '@debug/file-finder.js';
+import { QrcResourceFinder } from './qrc-resource-finder.mjs';
 import { createLogger } from 'qt-lib';
 
 const logger = createLogger('qml-preview-manager');
@@ -31,6 +32,7 @@ export interface QmlPreviewSettings {
 export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
   private _previewClient?: QmlPreviewClient;
   private readonly _fileFinder: FileFinder;
+  private readonly _qrcFinder: QrcResourceFinder;
   private _fileSystemWatcher?: vscode.FileSystemWatcher;
   private _lastLoadedUrl?: URL;
   private readonly _settings: QmlPreviewSettings = {};
@@ -41,11 +43,13 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
   constructor() {
     super();
     this._fileFinder = new FileFinder();
+    this._qrcFinder = new QrcResourceFinder();
   }
 
   set buildDirs(dirs: string[]) {
     this._buildDirs = dirs;
     this._fileFinder.buildDirs = dirs;
+    this._qrcFinder.buildDirs = dirs;
   }
 
   get buildDirs() {
@@ -150,37 +154,83 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       return;
     }
 
-    // Try to find the file or directory directly
-    const filePath = await this._fileFinder.findFile(requestedPath);
+    // Check if this is a QRC path (starts with : or qrc:)
+    const isQrcPath =
+      requestedPath.startsWith(':') || requestedPath.startsWith('qrc:');
 
-    if (filePath) {
-      // Store bidirectional mapping between local path and QRC path
-      this._pathMap.set(filePath, requestedPath);
-      logger.info('Mapped:', filePath, '->', requestedPath);
+    if (isQrcPath) {
+      // Handle QRC resource
+      const resource = await this._qrcFinder.findResource(requestedPath);
 
-      // Check if it's a directory
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
-        const entries = fs.readdirSync(filePath);
+      if (resource) {
+        if (resource.type === 'directory') {
+          // It's a virtual directory - return synthesized directory listing
+          logger.info(
+            'Announcing QRC directory:',
+            requestedPath,
+            'with',
+            resource.children?.length.toString() ?? '0',
+            'entries:',
+            resource.children?.join(', ') ?? ''
+          );
+          this._previewClient.announceDirectory(
+            requestedPath,
+            resource.children ?? []
+          );
+          return;
+        } else if (resource.realPath) {
+          // It's a file - map it and load contents
+          this._pathMap.set(resource.realPath, requestedPath);
+          logger.info('Mapped QRC:', resource.realPath, '->', requestedPath);
+
+          const loader =
+            this._settings.fileLoader ??
+            ((f: string) => QmlPreviewConnectionManager.defaultFileLoader(f));
+          const { success, contents } = loader(resource.realPath);
+
+          if (success) {
+            logger.info('Announcing QRC file:', requestedPath);
+            this._previewClient.announceFile(requestedPath, contents);
+            return;
+          }
+        }
+      }
+
+      // QRC path not found
+      logger.warn('QRC path not found:', requestedPath);
+      this._previewClient.announceError(requestedPath);
+      return;
+    }
+    // It is a real path
+    // Check if it's a directory or file
+    const fsPath = requestedPath;
+    if (fs.existsSync(fsPath)) {
+      const stats = fs.statSync(fsPath);
+      if (stats.isDirectory()) {
+        // It's a directory - read contents
+        const entries = fs.readdirSync(fsPath);
         logger.info(
           'Announcing directory:',
           requestedPath,
           'with',
           entries.length.toString(),
-          'entries'
+          'entries: ',
+          entries.join(', ')
         );
         this._previewClient.announceDirectory(requestedPath, entries);
         return;
-      }
+      } else if (stats.isFile()) {
+        // It's a file - load contents
+        const loader =
+          this._settings.fileLoader ??
+          ((f: string) => QmlPreviewConnectionManager.defaultFileLoader(f));
+        const { success, contents } = loader(fsPath);
 
-      // It's a file - load file contents
-      const loader =
-        this._settings.fileLoader ??
-        ((f: string) => QmlPreviewConnectionManager.defaultFileLoader(f));
-      const { success, contents } = loader(filePath);
-
-      if (success) {
-        this._previewClient.announceFile(requestedPath, contents);
-        return;
+        if (success) {
+          logger.info('Announcing file:', requestedPath);
+          this._previewClient.announceFile(requestedPath, contents);
+          return;
+        }
       }
     }
 
@@ -309,7 +359,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       const contents = fs.readFileSync(filename);
       return { success: true, contents };
     } catch (error) {
-      logger.error('Error loading file:', filename, String(error));
+      logger.error(`Error loading file: ${filename}, ${String(error)}`);
       return { success: false, contents: Buffer.alloc(0) };
     }
   }
