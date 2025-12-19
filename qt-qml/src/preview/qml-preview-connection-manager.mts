@@ -10,7 +10,6 @@ import {
   QmlDebugConnectionManager
 } from '@debug/debug-connection.mjs';
 import { QmlPreviewClient, FpsInfo } from './qml-preview-client.mjs';
-import { FileFinder } from '@debug/file-finder.js';
 import { QrcResourceFinder } from './qrc-resource-finder.mjs';
 import { createLogger } from 'qt-lib';
 
@@ -31,10 +30,9 @@ export interface QmlPreviewSettings {
 
 export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
   private _previewClient?: QmlPreviewClient;
-  private readonly _fileFinder: FileFinder;
   private readonly _qrcFinder: QrcResourceFinder;
   private _fileSystemWatcher?: vscode.FileSystemWatcher;
-  private _lastLoadedUrl?: URL;
+  private _lastLoadedUrl?: string;
   private readonly _settings: QmlPreviewSettings = {};
   private _buildDirs: string[] = [];
   // Map from local file paths to QRC paths
@@ -42,13 +40,11 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
   constructor() {
     super();
-    this._fileFinder = new FileFinder();
     this._qrcFinder = new QrcResourceFinder();
   }
 
   set buildDirs(dirs: string[]) {
     this._buildDirs = dirs;
-    this._fileFinder.buildDirs = dirs;
     this._qrcFinder.buildDirs = dirs;
   }
 
@@ -106,39 +102,6 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     });
   }
 
-  async loadFile(filename: string, changedFile: string, contents: Buffer) {
-    if (!this._previewClient) {
-      logger.warn('Preview client not initialized');
-      return;
-    }
-
-    // Check if file can be hot-reloaded
-    const classifier =
-      this._settings.fileClassifier ??
-      ((f: string) => QmlPreviewConnectionManager.defaultFileClassifier(f));
-    if (!classifier(changedFile)) {
-      logger.info('File requires app restart:', changedFile);
-      this._previewClient.rerun();
-      return;
-    }
-
-    // Find the remote path for the changed file
-    const remotePath = QmlPreviewConnectionManager.findRemotePath(changedFile);
-    if (remotePath) {
-      this._previewClient.announceFile(remotePath, contents);
-    } else {
-      logger.warn('Could not find remote path for:', changedFile);
-      this._previewClient.clearCache();
-    }
-
-    // Load the main file
-    const url = await this.findUrl(filename);
-    if (url) {
-      this._lastLoadedUrl = url;
-      this._previewClient.loadUrl(url);
-    }
-  }
-
   rerun() {
     this._previewClient?.rerun();
   }
@@ -167,10 +130,10 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
           // It's a virtual directory - return synthesized directory listing
           logger.info(
             'Announcing QRC directory:',
-            requestedPath,
-            'with',
+            `"${requestedPath}"`,
+            ' with',
             resource.children?.length.toString() ?? '0',
-            'entries:',
+            ' entries:',
             resource.children?.join(', ') ?? ''
           );
           this._previewClient.announceDirectory(
@@ -191,6 +154,10 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
           if (success) {
             logger.info('Announcing QRC file:', requestedPath);
             this._previewClient.announceFile(requestedPath, contents);
+            if (!this._lastLoadedUrl && requestedPath.endsWith('.qml')) {
+              this._lastLoadedUrl = requestedPath;
+              logger.info('Set main URL to:', this._lastLoadedUrl);
+            }
             return;
           }
         }
@@ -239,106 +206,6 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     this._previewClient.announceError(requestedPath);
   }
 
-  // private async findDirectoryFromQrc(
-  //   dirPrefix: string
-  // ): Promise<string | undefined> {
-  //   // Try to find any file that starts with this directory prefix
-  //   // For example, if looking for "/demos/calqlatr/content/",
-  //   // find files ending with "/demos/calqlatr/content/Display.qml" in QRC
-
-  //   // Get all QRC files
-  //   const allQrcFiles = await vscode.workspace.findFiles('**/*.qrc');
-  //   if (this._buildDirs.length > 0) {
-  //     for (const buildDir of this._buildDirs) {
-  //       const pattern = new vscode.RelativePattern(buildDir, '**/*.qrc');
-  //       const additionalQrcFiles = await vscode.workspace.findFiles(pattern);
-  //       allQrcFiles.push(...additionalQrcFiles);
-  //     }
-  //   }
-
-  //   // Parse all QRC files and find entries that match this directory
-  //   const parser = new QRCParser();
-  //   for (const qrcFile of allQrcFiles) {
-  //     const mapping = parser.parseQRCFile(qrcFile.fsPath);
-  //     if (!mapping) {
-  //       continue;
-  //     }
-
-  //     // Look for any entry where the QRC path ends with the directory prefix
-  //     for (const [qrcPath, fsPath] of mapping.entries()) {
-  //       // Check if this entry is inside the requested directory
-  //       // e.g., qrcPath="/qt/qml/demos/calqlatr/content/Display.qml" should match dirPrefix="/demos/calqlatr/content/"
-  //       if (
-  //         qrcPath.endsWith(dirPrefix.substring(0, dirPrefix.length - 1)) ||
-  //         qrcPath.includes(dirPrefix)
-  //       ) {
-  //         // Extract the directory from the filesystem path
-  //         const dirPath = path.dirname(fsPath);
-  //         if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
-  //           return dirPath;
-  //         }
-  //       }
-  //     }
-  //   }
-
-  //   // Try a different approach: search workspace for a directory matching the pattern
-  //   const pathParts = dirPrefix.split('/').filter((p) => p);
-  //   if (pathParts.length > 0) {
-  //     const lastPart = pathParts[pathParts.length - 1];
-  //     const dirs = await vscode.workspace.findFiles(
-  //       `**/${lastPart}`,
-  //       '**/node_modules/**',
-  //       10
-  //     );
-
-  //     for (const dir of dirs) {
-  //       const dirPath = dir.fsPath;
-  //       if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
-  //         return dirPath;
-  //       }
-  //       // Check parent directory
-  //       const parentDir = dirPath.substring(0, dirPath.lastIndexOf('/'));
-  //       const parentName = parentDir.substring(parentDir.lastIndexOf('/') + 1);
-  //       if (
-  //         parentName === lastPart &&
-  //         fs.existsSync(parentDir) &&
-  //         fs.statSync(parentDir).isDirectory()
-  //       ) {
-  //         return parentDir;
-  //       }
-  //     }
-  //   }
-
-  //   return undefined;
-  // }
-
-  private static findRemotePath(localPath: string): string | undefined {
-    // For now, use the local path as remote path
-    // In a real implementation, this would handle build directory mappings
-    // similar to Qt Creator's TargetFileFinder
-    return localPath;
-  }
-
-  private async findUrl(filename: string): Promise<URL | undefined> {
-    try {
-      // Try to find the file
-      const foundPath = await this._fileFinder.findFile(filename);
-      if (foundPath) {
-        return new URL(`file://${foundPath}`);
-      }
-
-      // If it starts with qrc:, handle it
-      if (filename.startsWith('qrc:') || filename.startsWith(':')) {
-        return new URL(filename);
-      }
-
-      return undefined;
-    } catch (error) {
-      logger.error('Error finding URL:', String(error));
-      return undefined;
-    }
-  }
-
   private static defaultFileLoader(filename: string): {
     success: boolean;
     contents: Buffer;
@@ -359,7 +226,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       const contents = fs.readFileSync(filename);
       return { success: true, contents };
     } catch (error) {
-      logger.error(`Error loading file: ${filename}, ${String(error)}`);
+      logger.error(`Error loading file: "${filename}", ${String(error)}`);
       return { success: false, contents: Buffer.alloc(0) };
     }
   }
@@ -399,7 +266,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       return;
     }
 
-    logger.info('Processing file change:', changedFile);
+    logger.info('Processing file change:', `"${changedFile}"`);
 
     const loader =
       this._settings.fileLoader ??
@@ -407,7 +274,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     const { success, contents } = loader(changedFile);
 
     if (!success) {
-      logger.warn('Failed to load changed file:', changedFile);
+      logger.warn('Failed to load changed file:', `"${changedFile}"`);
       return;
     }
 
@@ -423,7 +290,11 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     // Use the path mapping to find the QRC path
     const remotePath = this._pathMap.get(changedFile);
     if (remotePath) {
-      logger.info('Announcing file update:', remotePath);
+      logger.info(
+        'Announcing file update:',
+        `"${remotePath}" for local file:`,
+        changedFile
+      );
       this._previewClient.announceFile(remotePath, contents);
     } else {
       logger.warn('No QRC path mapping found for:', changedFile);
@@ -432,8 +303,8 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
     // Always reload the main URL after announcing file changes
     if (this._lastLoadedUrl) {
-      logger.info('Reloading URL:', this._lastLoadedUrl.toString());
-      this._previewClient.loadUrl(this._lastLoadedUrl);
+      logger.info('Reloading URL:', `"${this._lastLoadedUrl.toString()}"`);
+      this._previewClient.loadUrl(new URL(this._lastLoadedUrl));
     }
   }
   clearCache() {
