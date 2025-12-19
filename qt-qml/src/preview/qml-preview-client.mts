@@ -66,10 +66,11 @@ export class QmlPreviewClient
     return this._debugServiceUnavailable.event;
   }
 
-  loadUrl(url: URL) {
+  loadUrl(url: string) {
+    logger.info('Sending Load command for URL:', `"${url}"`);
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Load);
-    packet.writeStringUTF16(url.toString());
+    packet.writeStringUTF16(url);
     void this.sendMessage(packet);
   }
 
@@ -87,6 +88,12 @@ export class QmlPreviewClient
   }
 
   announceFile(path: string, contents: Buffer) {
+    logger.info(
+      'Sending File command:',
+      `"${path}"`,
+      'size:',
+      String(contents.length)
+    );
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.File);
     packet.writeStringUTF16(path);

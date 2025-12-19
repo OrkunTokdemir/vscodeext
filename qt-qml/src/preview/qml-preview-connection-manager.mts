@@ -11,7 +11,7 @@ import {
 } from '@debug/debug-connection.mjs';
 import { QmlPreviewClient, FpsInfo } from './qml-preview-client.mjs';
 import { QrcResourceFinder } from './qrc-resource-finder.mjs';
-import { createLogger } from 'qt-lib';
+import { createLogger, delay } from 'qt-lib';
 
 const logger = createLogger('qml-preview-manager');
 
@@ -249,9 +249,9 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       true // ignoreDeleteEvents
     );
 
-    this._fileSystemWatcher.onDidChange((uri) => {
+    this._fileSystemWatcher.onDidChange(async (uri) => {
       logger.info('File changed:', uri.fsPath);
-      this.handleFileChange(uri.fsPath);
+      await this.handleFileChange(uri.fsPath);
     });
 
     this._fileSystemWatcher.onDidCreate((uri) => {
@@ -261,7 +261,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     });
   }
 
-  private handleFileChange(changedFile: string) {
+  private async handleFileChange(changedFile: string) {
     if (!this._previewClient) {
       return;
     }
@@ -303,8 +303,10 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
     // Always reload the main URL after announcing file changes
     if (this._lastLoadedUrl) {
-      logger.info('Reloading URL:', `"${this._lastLoadedUrl.toString()}"`);
-      this._previewClient.loadUrl(new URL(this._lastLoadedUrl));
+      logger.info('Reloading URL:', `"${this._lastLoadedUrl}"`);
+      // delay to ensure file announcement is processed first
+      await delay(1000);
+      this._previewClient.loadUrl(this._lastLoadedUrl);
     }
   }
   clearCache() {
