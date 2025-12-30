@@ -99,6 +99,13 @@ export class QmlPreviewClient
     packet.writeStringUTF16(path);
     packet.writeUInt32BE(contents.length);
     packet.writeBuffer(contents);
+
+    // Calculate total packet size (similar to Qt Creator)
+    // Command (1) + path length fields + path + content length (4) + content
+    const pathLengthInBytes = Buffer.byteLength(path, 'utf16le');
+    const totalSize = 1 + 4 + pathLengthInBytes + 4 + contents.length;
+    logger.info(`==> File packet total size: ${totalSize} bytes`);
+
     void this.sendMessage(packet);
   }
 

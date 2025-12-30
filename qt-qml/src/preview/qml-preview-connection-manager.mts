@@ -219,11 +219,27 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
       if (doc && !doc.isClosed) {
         const contents = Buffer.from(doc.getText(), 'utf8');
+        const preview = contents
+          .slice(0, 100)
+          .toString('utf8')
+          .replace(/\n/g, '\\n');
+        logger.info(
+          `===> Reading from open document: "${filename}" bytes: ${contents.length}`
+        );
+        logger.info(`     Content preview: ${preview}...`);
         return { success: true, contents };
       }
 
       // Fallback to reading from disk
       const contents = fs.readFileSync(filename);
+      const preview = contents
+        .slice(0, 100)
+        .toString('utf8')
+        .replace(/\n/g, '\\n');
+      logger.info(
+        `===> Reading from disk: "${filename}" bytes: ${contents.length}`
+      );
+      logger.info(`     Content preview: ${preview}...`);
       return { success: true, contents };
     } catch (error) {
       logger.error(`Error loading file: "${filename}", ${String(error)}`);
@@ -266,7 +282,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       return;
     }
 
-    logger.info('Processing file change:', `"${changedFile}"`);
+    logger.info(`===> File changed: "${changedFile}"`);
 
     const loader =
       this._settings.fileLoader ??
@@ -277,6 +293,13 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       logger.warn('Failed to load changed file:', `"${changedFile}"`);
       return;
     }
+
+    const preview = contents
+      .slice(0, 100)
+      .toString('utf8')
+      .replace(/\n/g, '\\n');
+    logger.info(`Loaded content: ${contents.length} bytes`);
+    logger.info(`Content preview: ${preview}...`);
 
     const classifier =
       this._settings.fileClassifier ??
@@ -302,10 +325,11 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     }
 
     // Always reload the main URL after announcing file changes
+    logger.info(`===> Reloading last loaded URL after file change`);
     if (this._lastLoadedUrl) {
       logger.info('Reloading URL:', `"${this._lastLoadedUrl}"`);
       // delay to ensure file announcement is processed first
-      await delay(1000);
+      await delay(200);
       this._previewClient.loadUrl(this._lastLoadedUrl);
     }
   }
