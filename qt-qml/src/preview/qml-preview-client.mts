@@ -14,6 +14,10 @@ import { createLogger } from 'qt-lib';
 
 const logger = createLogger('qml-preview-client');
 
+/**
+ * QML Preview protocol commands
+ * Maps to QmlPreview::QmlPreviewClient::Command from Qt Creator
+ */
 enum QmlPreviewCommand {
   File,
   Load,
@@ -23,9 +27,14 @@ enum QmlPreviewCommand {
   Directory,
   ClearCache,
   Zoom,
-  Fps
+  Fps,
+  AnimationSpeed
 }
 
+/**
+ * FPS information structure
+ * Maps to QmlPreview::QmlPreviewClient::FpsInfo from Qt Creator
+ */
 export interface FpsInfo {
   numSyncs: number;
   minSync: number;
@@ -37,10 +46,21 @@ export interface FpsInfo {
   totalRender: number;
 }
 
+/**
+ * QML Preview Client
+ * TypeScript implementation of QmlPreview::QmlPreviewClient from Qt Creator
+ * Implements the QML Preview debug protocol for live preview functionality
+ *
+ * Signal/Slot pattern using VSCode EventEmitter:
+ * - Qt signals → private EventEmitter fields
+ * - emit signal() → _emitter.fire()
+ * - connect(signal, slot) → emitter.event property
+ */
 export class QmlPreviewClient
   extends QmlDebugClient
   implements IQmlDebugClient
 {
+  // Signals (using EventEmitter pattern)
   private readonly _pathRequested = new vscode.EventEmitter<string>();
   private readonly _errorReported = new vscode.EventEmitter<string>();
   private readonly _fpsReported = new vscode.EventEmitter<FpsInfo>();
@@ -48,8 +68,10 @@ export class QmlPreviewClient
 
   constructor(connection: QmlDebugConnection) {
     super('QmlPreview', connection);
+    logger.info('QmlPreviewClient created');
   }
 
+  // Signal accessors (public event properties)
   get onPathRequested() {
     return this._pathRequested.event;
   }
@@ -66,6 +88,10 @@ export class QmlPreviewClient
     return this._debugServiceUnavailable.event;
   }
 
+  /**
+   * Load a QML file URL
+   * Maps to QmlPreview::QmlPreviewClient::loadUrl()
+   */
   loadUrl(url: string) {
     logger.info('Sending Load command for URL:', `"${url}"`);
     const packet = new Packet();
@@ -74,19 +100,33 @@ export class QmlPreviewClient
     void this.sendMessage(packet);
   }
 
+  /**
+   * Rerun the QML application
+   * Maps to QmlPreview::QmlPreviewClient::rerun()
+   */
   rerun() {
+    logger.info('Sending Rerun command');
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Rerun);
     void this.sendMessage(packet);
   }
 
+  /**
+   * Set zoom factor
+   * Maps to QmlPreview::QmlPreviewClient::zoom()
+   */
   zoom(zoomFactor: number) {
+    logger.info('Sending Zoom command:', String(zoomFactor));
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Zoom);
     packet.writeFloatBE(zoomFactor);
     void this.sendMessage(packet);
   }
 
+  /**
+   * Announce a file to the preview client
+   * Maps to QmlPreview::QmlPreviewClient::announceFile()
+   */
   announceFile(path: string, contents: Buffer) {
     logger.info(
       'Sending File command:',
@@ -100,16 +140,27 @@ export class QmlPreviewClient
     packet.writeUInt32BE(contents.length);
     packet.writeBuffer(contents);
 
-    // Calculate total packet size (similar to Qt Creator)
-    // Command (1) + path length fields + path + content length (4) + content
+    // Log packet details (similar to Qt Creator implementation)
     const pathLengthInBytes = Buffer.byteLength(path, 'utf16le');
     const totalSize = 1 + 4 + pathLengthInBytes + 4 + contents.length;
-    logger.info(`==> File packet total size: ${totalSize} bytes`);
+    logger.info('==> File packet total size:', String(totalSize), 'bytes');
 
     void this.sendMessage(packet);
   }
 
+  /**
+   * Announce a directory to the preview client
+   * Maps to QmlPreview::QmlPreviewClient::announceDirectory()
+   */
   announceDirectory(path: string, entries: string[]) {
+    logger.info(
+      'Sending Directory command:',
+      `"${path}"`,
+      'entries:',
+      String(entries.length),
+      '->',
+      entries.join(', ')
+    );
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Directory);
     packet.writeStringUTF16(path);
@@ -119,30 +170,64 @@ export class QmlPreviewClient
     void this.sendMessage(packet);
   }
 
+  /**
+   * Announce an error for a path
+   * Maps to QmlPreview::QmlPreviewClient::announceError()
+   */
   announceError(path: string) {
+    logger.info('Sending Error command for path:', `"${path}"`);
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Error);
     packet.writeStringUTF16(path);
     void this.sendMessage(packet);
   }
 
+  /**
+   * Clear the preview cache
+   * Maps to QmlPreview::QmlPreviewClient::clearCache()
+   */
   clearCache() {
+    logger.info('Sending ClearCache command');
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.ClearCache);
     void this.sendMessage(packet);
   }
 
+  /**
+   * Set animation speed factor
+   * Maps to QmlPreview::QmlPreviewClient::setAnimationSpeed()
+   */
+  setAnimationSpeed(factor: number) {
+    logger.info('Sending AnimationSpeed command:', String(factor));
+    const packet = new Packet();
+    packet.writeInt8(QmlPreviewCommand.AnimationSpeed);
+    packet.writeFloatBE(factor);
+    void this.sendMessage(packet);
+  }
+
+  /**
+   * Handle incoming messages from the QML Preview service
+   * Overrides QmlDebugClient.messageReceived()
+   * Maps to QmlPreview::QmlPreviewClient::messageReceived()
+   */
   override messageReceived(packet: Packet): void {
     const command = packet.readInt8() as QmlPreviewCommand;
 
     switch (command) {
       case QmlPreviewCommand.Request: {
         const path = packet.readStringUTF16LE();
+        logger.info(
+          '<=== Path requested from Qt:',
+          `"${path}"`,
+          'length:',
+          String(path.length)
+        );
         this._pathRequested.fire(path);
         break;
       }
       case QmlPreviewCommand.Error: {
         const error = packet.readStringUTF16LE();
+        logger.info('<=== Error received from Qt:', `"${error}"`);
         this._errorReported.fire(error);
         break;
       }
@@ -161,19 +246,35 @@ export class QmlPreviewClient
         break;
       }
       default:
-        logger.warn('Unknown preview command:', QmlPreviewCommand[command]);
+        logger.warn(
+          '<=== Invalid command received:',
+          String(command),
+          'name:',
+          QmlPreviewCommand[command]
+        );
         break;
     }
   }
 
+  /**
+   * Handle state changes of the QML Preview service
+   * Overrides QmlDebugClient.stateChanged()
+   * Maps to QmlPreview::QmlPreviewClient::stateChanged()
+   */
   override stateChanged(state: QmlDebugConnectionState): void {
     logger.info('QmlPreview state changed:', QmlDebugConnectionState[state]);
     if (state === QmlDebugConnectionState.Unavailable) {
+      logger.info('<=== QmlPreviewClient became Unavailable');
       this._debugServiceUnavailable.fire();
     }
   }
 
+  /**
+   * Clean up resources
+   * Dispose of all event emitters
+   */
   dispose() {
+    logger.info('Disposing QmlPreviewClient');
     this._pathRequested.dispose();
     this._errorReported.dispose();
     this._fpsReported.dispose();
