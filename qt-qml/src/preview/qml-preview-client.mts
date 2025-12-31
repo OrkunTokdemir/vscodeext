@@ -96,7 +96,7 @@ export class QmlPreviewClient
     logger.info('Sending Load command for URL:', `"${url}"`);
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Load);
-    packet.writeStringUTF16(url);
+    packet.writeStringUTF8(url);
     void this.sendMessage(packet);
   }
 

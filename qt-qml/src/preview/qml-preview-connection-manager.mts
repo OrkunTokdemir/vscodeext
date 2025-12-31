@@ -530,9 +530,14 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       this._previewClient.clearCache();
     }
 
-    // Always reload the main URL after announcing file changes
+    // add qrc to _lastLoadedUrl if needed
+    if (
+      this._lastLoadedUrl.startsWith(':') &&
+      !this._lastLoadedUrl.startsWith('qrc:')
+    ) {
+      this._lastLoadedUrl = 'qrc' + this._lastLoadedUrl;
+    }
     logger.info('===> Reloading with URL:', `"${this._lastLoadedUrl}"`);
-
     // Small delay to ensure file announcement is processed first
     await delay(100);
     this._previewClient.loadUrl(this._lastLoadedUrl);
