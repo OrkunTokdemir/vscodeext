@@ -2,7 +2,7 @@
   "qt-qml.command.restartQmlls.title": "Restart QML language server",
   "qt-qml.command.checkQmllsUpdate.title": "Check for QML language server update",
   "qt-qml.command.downloadQmlls.title": "Download the most recent QML language server",
-  "qt-qml.command.startQmlPreview.title": "Start QML Preview",
+  "qt-qml.command.startQmlPreview.title": "QML Preview (Attach to Waiting Application)",
   "qt-qml.command.stopQmlPreview.title": "Stop QML Preview",
   "qt-qml.command.reloadQmlPreview.title": "Reload QML Preview",
   "qt-qml.command.setQmlPreviewZoom.title": "Set QML Preview Zoom Factor",
