@@ -58,18 +58,31 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
   private _previewClient?: QmlPreviewClient;
   private readonly _qrcFinder: QrcResourceFinder;
   private _fileSystemWatcher?: vscode.FileSystemWatcher;
-  private _lastLoadedUrl?: string;
+  private _lastLoadedUrl?: URL;
   private readonly _settings: QmlPreviewSettings = {};
   private _buildDirs: string[] = [];
   // Map from local file paths to QRC paths (for file change handling)
   private readonly _pathMap = new Map<string, string>();
   // Set of files being actively watched (Qt Creator pattern)
   private readonly _watchedFiles = new Set<string>();
-
+  // Signals (Qt Creator pattern: signals for communication with external components)
+  // Maps to: signals in QmlPreviewConnectionManager
+  private readonly _onRestart = new vscode.EventEmitter<void>();
+  private readonly _onLanguageChange = new vscode.EventEmitter<string>();
   constructor() {
     super();
     this._qrcFinder = new QrcResourceFinder();
     logger.info('QmlPreviewConnectionManager created');
+  }
+
+  // Signal accessors (public event properties)
+  // Maps to: Qt signals that can be connected to
+  get onRestart() {
+    return this._onRestart.event;
+  }
+
+  get onLanguageChange() {
+    return this._onLanguageChange.event;
   }
 
   /**
@@ -168,10 +181,16 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
   /**
    * Load a QML URL in the preview
+   * Maps to Qt Creator's loadUrl functionality
    */
   loadUrl(url: string) {
     logger.info('Loading URL:', url);
-    this._lastLoadedUrl = url;
+    const parsedUrl = QmlPreviewConnectionManager.createUrlFromPath(url);
+    if (parsedUrl) {
+      this._lastLoadedUrl = parsedUrl;
+    } else {
+      delete this._lastLoadedUrl;
+    }
     this._previewClient?.loadUrl(url);
   }
 
@@ -185,10 +204,57 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
   /**
    * Set zoom factor
+   * Maps to Qt Creator's zoom signal
    */
   zoom(factor: number) {
     logger.info('Setting zoom factor:', String(factor));
     this._previewClient?.zoom(factor);
+  }
+
+  /**
+   * Set animation speed factor
+   * Maps to Qt Creator's QmlPreviewClient::setAnimationSpeed()
+   */
+  setAnimationSpeed(factor: number) {
+    logger.info('Setting animation speed:', String(factor));
+    this._previewClient?.setAnimationSpeed(factor);
+  }
+
+  /**
+   * Change language for QML translation preview
+   * Maps to Qt Creator's language signal
+   * @param locale - Language locale (e.g., "en_US", "de_DE")
+   */
+  changeLanguage(locale: string) {
+    logger.info('Changing language to:', locale);
+    this._onLanguageChange.fire(locale);
+    // Note: Full i18n support would require QmlDebugTranslationClient
+    // which is not yet implemented
+  }
+
+  /**
+   * Create URL from QML path string
+   * Attempts to parse as URL, falls back to adding 'qrc:' protocol
+   * @param path - Path string (may be URL, QRC path, or filesystem path)
+   * @returns URL object or undefined if parsing fails
+   */
+  private static createUrlFromPath(path: string): URL | undefined {
+    try {
+      if (path.startsWith('qrc:')) {
+        // Already has qrc: protocol, use as-is
+        return new URL(path);
+      } else if (path.startsWith(':')) {
+        // QRC resource path without protocol (e.g., ":/path")
+        // Remove leading ':' to avoid double colon (qrc::)
+        return new URL('qrc:' + path.substring(1));
+      } else {
+        // Try to parse as standard URL
+        return new URL(path);
+      }
+    } catch {
+      logger.warn('Failed to create URL from:', path);
+      return undefined;
+    }
   }
 
   /**
@@ -269,8 +335,12 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
           // Track main QML file
           if (!this._lastLoadedUrl && requestedPath.endsWith('.qml')) {
-            this._lastLoadedUrl = requestedPath;
-            logger.info('Set main URL to:', this._lastLoadedUrl);
+            const parsedUrl =
+              QmlPreviewConnectionManager.createUrlFromPath(requestedPath);
+            if (parsedUrl) {
+              this._lastLoadedUrl = parsedUrl;
+              logger.info('Set main URL to:', this._lastLoadedUrl.toString());
+            }
           }
           return;
         }
@@ -500,6 +570,10 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
     if (!classifier(changedFile)) {
       logger.info('     File requires full restart (classifier check failed)');
+      // Emit restart signal (Qt Creator pattern)
+      // External components can listen to this and decide how to restart
+      this._onRestart.fire();
+      // Also trigger rerun directly as fallback
       this._previewClient.rerun();
       return;
     }
@@ -530,17 +604,30 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       this._previewClient.clearCache();
     }
 
-    // add qrc to _lastLoadedUrl if needed
-    if (
-      this._lastLoadedUrl.startsWith(':') &&
-      !this._lastLoadedUrl.startsWith('qrc:')
-    ) {
-      this._lastLoadedUrl = 'qrc' + this._lastLoadedUrl;
-    }
-    logger.info('===> Reloading with URL:', `"${this._lastLoadedUrl}"`);
+    // // Always reload the main URL after announcing file changes
+    // const urlString = this._lastLoadedUrl.toString();
+
+    // // Fix QRC URL if needed: add 'qrc' protocol if starts with ':'
+    // let reloadUrl = urlString;
+    // if (urlString.startsWith(':') && !urlString.startsWith('qrc:')) {
+    //   reloadUrl = 'qrc' + urlString;
+    // } else if (urlString.startsWith('qrc::')) {
+    //   // Fix double colon
+    //   reloadUrl = urlString.replace('qrc::', 'qrc:');
+    // }
+
+    logger.info(
+      '===> Reloading with URL:',
+      `"${this._lastLoadedUrl.toString()}"`,
+      'scheme:',
+      `"${this._lastLoadedUrl.protocol}"`,
+      'path:',
+      `"${this._lastLoadedUrl.pathname}"`
+    );
+
     // Small delay to ensure file announcement is processed first
     await delay(100);
-    this._previewClient.loadUrl(this._lastLoadedUrl);
+    this._previewClient.loadUrl(this._lastLoadedUrl.toString());
   }
 
   /**
@@ -569,6 +656,10 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     logger.info('Disposing QmlPreviewConnectionManager');
     this._fileSystemWatcher?.dispose();
     this._previewClient?.dispose();
+
+    // Dispose event emitters
+    this._onRestart.dispose();
+    this._onLanguageChange.dispose();
 
     // Clear tracked data structures
     this._watchedFiles.clear();
