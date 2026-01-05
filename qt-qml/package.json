@@ -54,7 +54,8 @@
       {
         "command": "qt-qml.startQmlPreview",
         "title": "%qt-qml.command.startQmlPreview.title%",
-        "category": "Qt"
+        "category": "Qt",
+        "icon": "$(play)"
       },
       {
         "command": "qt-qml.stopQmlPreview",
@@ -77,6 +78,15 @@
         "category": "Qt"
       }
     ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "qt-qml.startQmlPreview",
+          "when": "resourceLangId == qml",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "languages": [
       {
         "id": "qml",
