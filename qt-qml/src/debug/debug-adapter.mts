@@ -11,7 +11,7 @@ import {
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { Mutex } from 'async-mutex';
 import path from 'path';
-import { ChildProcess, execSync, spawn, SpawnOptions } from 'child_process';
+import { ChildProcess, execSync } from 'child_process';
 import getPort from 'get-port';
 
 import { createLogger, delay, IsLinux, IsWindows, telemetry } from 'qt-lib';
@@ -22,6 +22,7 @@ import {
 } from '@debug/debug-connection.mjs';
 import { QmlEngine, StepAction } from '@debug/qml-engine.mjs';
 import { projectManager } from '@/extension.mjs';
+import { spawnProcessForTool } from '@/utils.ts';
 
 const logger = createLogger('debug-adapter');
 
@@ -643,38 +644,40 @@ export class QmlDebugSession extends LoggingDebugSession {
       // Start the program with the debugger args
       const program = args.program;
       const additionalArgs = args.args ?? [];
-      const quoteArg = (arg: string): string => {
-        // Escape double quotes and wrap the argument in quotes
-        const escaped = arg.replace(/(["\\])/g, '\\$1');
-        return `"${escaped}"`;
-      };
+      const command = `${program} ${debuggerArgs}`;
 
-      let command = `${program} ${debuggerArgs}`;
-      if (additionalArgs.length > 0) {
-        command += ` ${additionalArgs.map(quoteArg).join(' ')}`;
-      }
-      logger.info('Starting program:', command);
-      let options: SpawnOptions = {
-        shell: true
-      };
-      if (IsLinux) {
-        options = {
-          ...options,
-          detached: true
-        };
-      }
-      if (IsWindows) {
-        const dllDirs = await vscode.commands.executeCommand(`qt-cpp.qtDir`);
-        if (dllDirs !== undefined) {
-          const env = { ...process.env };
-          env.PATH = `${dllDirs as string};${env.PATH}`;
-          options = {
-            ...options,
-            env: env
-          };
-        }
-      }
-      this._process = spawn(command, options);
+      // const quoteArg = (arg: string): string => {
+      //   // Escape double quotes and wrap the argument in quotes
+      //   const escaped = arg.replace(/(["\\])/g, '\\$1');
+      //   return `"${escaped}"`;
+      // };
+
+      // if (additionalArgs.length > 0) {
+      //   command += ` ${additionalArgs.map(quoteArg).join(' ')}`;
+      // }
+      // logger.info('Starting program:', command);
+      // let options: SpawnOptions = {
+      //   shell: true
+      // };
+      // if (IsLinux) {
+      //   options = {
+      //     ...options,
+      //     detached: true
+      //   };
+      // }
+      // if (IsWindows) {
+      //   const dllDirs = await vscode.commands.executeCommand(`qt-cpp.qtDir`);
+      //   if (dllDirs !== undefined) {
+      //     const env = { ...process.env };
+      //     env.PATH = `${dllDirs as string};${env.PATH}`;
+      //     options = {
+      //       ...options,
+      //       env: env
+      //     };
+      //   }
+      // }
+      this._process = await spawnProcessForTool(command, additionalArgs);
+
       if (!this._process.stdout || !this._process.stderr) {
         throw new Error('Process stdout or stderr is undefined');
       }

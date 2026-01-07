@@ -2,14 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
+import { ChildProcess } from 'child_process';
 
-import { telemetry } from 'qt-lib';
+import { createLogger, telemetry } from 'qt-lib';
 import { EXTENSION_ID } from '@/constants.js';
 import { QmlPreviewConnectionManager } from '@preview/qml-preview-connection-manager.mjs';
 import { FpsInfo } from '@preview/qml-preview-client.mjs';
 import { Server, ServerScheme } from '@debug/debug-connection.mjs';
+import getPort from 'get-port';
+import { spawnProcessForTool } from '@/utils.ts';
 
 let previewManager: QmlPreviewConnectionManager | undefined;
+let previewProcess: ChildProcess | undefined;
+
+const logger = createLogger('qml-preview');
 
 export function registerStartQmlPreviewCommand() {
   return vscode.commands.registerCommand(
@@ -23,26 +29,26 @@ export function registerStartQmlPreviewCommand() {
         );
         return;
       }
-
-      const port = await vscode.window.showInputBox({
-        prompt: 'Enter the QML debug port (from your application launch)',
-        placeHolder: '5555',
-        validateInput: (value) => {
-          const num = parseInt(value);
-          if (isNaN(num) || num < 1 || num > 65535) {
-            return 'Please enter a valid port number between 1 and 65535';
-          }
-          return undefined;
+      const dispose = () => {
+        if (previewManager) {
+          previewManager.dispose();
+          previewManager = undefined;
         }
-      });
+      };
+
+      // Obtain port a free port
+      const port = await getPort();
 
       if (!port) {
+        void vscode.window.showErrorMessage(
+          'Failed to obtain a free port for QML Preview.'
+        );
         return;
       }
-
+      const host = '127.0.0.1';
       const server: Server = {
-        host: 'localhost',
-        port: parseInt(port),
+        host: host,
+        port: parseInt(port.toString()),
         scheme: ServerScheme.Tcp
       };
 
@@ -57,18 +63,51 @@ export function registerStartQmlPreviewCommand() {
           `QML Preview: ${fps.numSyncs} fps (${fps.minSync}ms-${fps.maxSync}ms)`
         );
       });
-
-      try {
-        previewManager.connectToServer(server);
-        void vscode.window.showInformationMessage(
-          `Connecting to QML Preview on port ${port}...`
+      // -qmljsdebugger=host:127.0.0.1,port:12150,block,services:QmlPreview,DebugTranslation
+      const ret = await vscode.commands.executeCommand(
+        'cmake.getLaunchTargetPath'
+      );
+      const program = ret as string;
+      if (!program) {
+        void vscode.window.showErrorMessage(
+          'Failed to get launch target executable for QML Preview.'
         );
+        dispose();
+        return;
+      }
+      const previewArgs = `-qmljsdebugger=host:${server.host},port:${server.port},block,services:QmlPreview,DebugTranslation`;
+      const command = `${program} ${previewArgs}`;
+      logger.info('Starting QML Preview with command:', command);
+      previewProcess = await spawnProcessForTool(command, []);
+      // Check if the process started successfully
+      if (previewProcess.killed || previewProcess.pid === undefined) {
+        void vscode.window.showErrorMessage(
+          'Failed to start QML Preview process.'
+        );
+        dispose();
+        return;
+      }
+      logger.info(
+        `QML Preview process started with PID: ${previewProcess.pid}`
+      );
+      previewProcess.on('exit', (code, signal) => {
+        void vscode.window.showErrorMessage(
+          `QML Preview process exited with code ${code}, signal ${signal}`
+        );
+        dispose();
+        previewProcess = undefined;
+      });
+      try {
+        // Get executable by using cmake.getLaunchTargetFilename
+        previewManager.connectToServer(server);
       } catch (error) {
         void vscode.window.showErrorMessage(
           `Failed to start QML Preview: ${String(error)}`
         );
-        previewManager.dispose();
-        previewManager = undefined;
+        dispose();
+        previewProcess.kill();
+        previewProcess = undefined;
+        return;
       }
     }
   );
