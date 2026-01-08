@@ -65,7 +65,7 @@ export function registerStartQmlPreviewCommand() {
       });
       // -qmljsdebugger=host:127.0.0.1,port:12150,block,services:QmlPreview,DebugTranslation
       const ret = await vscode.commands.executeCommand(
-        'cmake.getLaunchTargetPath'
+        'cmake.launchTargetPath'
       );
       const program = ret as string;
       if (!program) {
@@ -91,9 +91,11 @@ export function registerStartQmlPreviewCommand() {
         `QML Preview process started with PID: ${previewProcess.pid}`
       );
       previewProcess.on('exit', (code, signal) => {
-        void vscode.window.showErrorMessage(
-          `QML Preview process exited with code ${code}, signal ${signal}`
-        );
+        if (code != 0) {
+          void vscode.window.showErrorMessage(
+            `QML Preview process exited with code ${code}, signal ${signal}`
+          );
+        }
         dispose();
         previewProcess = undefined;
       });
@@ -107,6 +109,87 @@ export function registerStartQmlPreviewCommand() {
         dispose();
         previewProcess.kill();
         previewProcess = undefined;
+        return;
+      }
+    }
+  );
+}
+
+export function registerAttachQmlPreviewCommand() {
+  return vscode.commands.registerCommand(
+    `${EXTENSION_ID}.attachQmlPreview`,
+    async () => {
+      telemetry.sendAction('attachQmlPreview');
+
+      if (previewManager?.isConnected()) {
+        void vscode.window.showInformationMessage(
+          'QML Preview is already running.'
+        );
+        return;
+      }
+
+      const dispose = () => {
+        if (previewManager) {
+          previewManager.dispose();
+          previewManager = undefined;
+        }
+      };
+
+      // Ask user for host and port
+      const hostInput = await vscode.window.showInputBox({
+        prompt: 'Enter the host address of the QML application',
+        placeHolder: '127.0.0.1',
+        value: '127.0.0.1'
+      });
+
+      if (!hostInput) {
+        return;
+      }
+
+      const portInput = await vscode.window.showInputBox({
+        prompt: 'Enter the port number of the QML application',
+        placeHolder: '12150',
+        validateInput: (value) => {
+          const num = parseInt(value);
+          if (isNaN(num) || num <= 0 || num > 65535) {
+            return 'Please enter a valid port number (1-65535)';
+          }
+          return undefined;
+        }
+      });
+
+      if (!portInput) {
+        return;
+      }
+
+      const port = parseInt(portInput);
+      const server: Server = {
+        host: hostInput,
+        port: port,
+        scheme: ServerScheme.Tcp
+      };
+
+      previewManager = new QmlPreviewConnectionManager();
+      previewManager.setupFileWatcher();
+
+      // Set up FPS handler (log only)
+      previewManager.setFpsHandler((fps: FpsInfo) => {
+        // eslint-disable-next-line no-console
+        console.log(
+          `QML Preview: ${fps.numSyncs} fps (${fps.minSync}ms-${fps.maxSync}ms)`
+        );
+      });
+
+      try {
+        previewManager.connectToServer(server);
+        void vscode.window.showInformationMessage(
+          `Attached to QML Preview at ${hostInput}:${port}`
+        );
+      } catch (error) {
+        void vscode.window.showErrorMessage(
+          `Failed to attach to QML Preview: ${String(error)}`
+        );
+        dispose();
         return;
       }
     }

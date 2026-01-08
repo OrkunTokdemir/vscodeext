@@ -171,9 +171,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
     // Signal: debugServiceUnavailable -> Slot: show warning
     this._previewClient.onDebugServiceUnavailable(() => {
-      void vscode.window.showWarningMessage(
-        'QML Preview is not available for this version of Qt.'
-      );
+      logger.info('QmlPreviewClient reported Debug Service Unavailable');
     });
 
     logger.info('QmlPreviewClient created and connected');

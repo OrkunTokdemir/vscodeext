@@ -58,6 +58,12 @@
         "icon": "$(play)"
       },
       {
+        "command": "qt-qml.attachQmlPreview",
+        "title": "%qt-qml.command.attachQmlPreview.title%",
+        "category": "Qt",
+        "icon": "$(debug-disconnect)"
+      },
+      {
         "command": "qt-qml.stopQmlPreview",
         "title": "%qt-qml.command.stopQmlPreview.title%",
         "category": "Qt"
