@@ -2,20 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-import { ChildProcess } from 'child_process';
 
 import { createLogger, telemetry } from 'qt-lib';
 import { EXTENSION_ID } from '@/constants.js';
 import { QmlPreviewConnectionManager } from '@preview/qml-preview-connection-manager.mjs';
 import { FpsInfo } from '@preview/qml-preview-client.mjs';
 import { Server, ServerScheme } from '@debug/debug-connection.mjs';
+import { QmlPreviewUI } from '@preview/ui.js';
 import getPort from 'get-port';
-import { spawnProcessForTool } from '@/utils.ts';
+import { QtProcess, spawnProcessForTool } from '@/utils.mts';
 
 let previewManager: QmlPreviewConnectionManager | undefined;
-let previewProcess: ChildProcess | undefined;
+let previewProcess: QtProcess | undefined;
 
 const logger = createLogger('qml-preview');
+const ui = new QmlPreviewUI();
 
 export function registerStartQmlPreviewCommand() {
   return vscode.commands.registerCommand(
@@ -24,9 +25,7 @@ export function registerStartQmlPreviewCommand() {
       telemetry.sendAction('startQmlPreview');
 
       if (previewManager?.isConnected()) {
-        void vscode.window.showInformationMessage(
-          'QML Preview is already running.'
-        );
+        ui.showAlreadyRunning();
         return;
       }
       const dispose = () => {
@@ -34,15 +33,14 @@ export function registerStartQmlPreviewCommand() {
           previewManager.dispose();
           previewManager = undefined;
         }
+        ui.setPreviewStopped();
       };
 
       // Obtain port a free port
       const port = await getPort();
 
       if (!port) {
-        void vscode.window.showErrorMessage(
-          'Failed to obtain a free port for QML Preview.'
-        );
+        ui.showFailedToGetPort();
         return;
       }
       const host = '127.0.0.1';
@@ -69,9 +67,7 @@ export function registerStartQmlPreviewCommand() {
       );
       const program = ret as string;
       if (!program) {
-        void vscode.window.showErrorMessage(
-          'Failed to get launch target executable for QML Preview.'
-        );
+        ui.showFailedToGetLaunchTarget();
         dispose();
         return;
       }
@@ -81,9 +77,7 @@ export function registerStartQmlPreviewCommand() {
       previewProcess = await spawnProcessForTool(command, []);
       // Check if the process started successfully
       if (previewProcess.killed || previewProcess.pid === undefined) {
-        void vscode.window.showErrorMessage(
-          'Failed to start QML Preview process.'
-        );
+        ui.showFailedToStartProcess();
         dispose();
         return;
       }
@@ -91,10 +85,14 @@ export function registerStartQmlPreviewCommand() {
         `QML Preview process started with PID: ${previewProcess.pid}`
       );
       previewProcess.on('exit', (code, signal) => {
-        if (code != 0) {
-          void vscode.window.showErrorMessage(
-            `QML Preview process exited with code ${code}, signal ${signal}`
-          );
+        const isKilledbyUser =
+          (signal === 'SIGTERM' && code === null) || code === 0;
+        if (!isKilledbyUser) {
+          ui.showProcessExited(code, signal);
+        }
+        if (previewManager) {
+          previewManager.dispose();
+          previewManager = undefined;
         }
         dispose();
         previewProcess = undefined;
@@ -102,10 +100,9 @@ export function registerStartQmlPreviewCommand() {
       try {
         // Get executable by using cmake.getLaunchTargetFilename
         previewManager.connectToServer(server);
+        ui.setPreviewRunning();
       } catch (error) {
-        void vscode.window.showErrorMessage(
-          `Failed to start QML Preview: ${String(error)}`
-        );
+        ui.showFailedToStart(error);
         dispose();
         previewProcess.kill();
         previewProcess = undefined;
@@ -122,9 +119,7 @@ export function registerAttachQmlPreviewCommand() {
       telemetry.sendAction('attachQmlPreview');
 
       if (previewManager?.isConnected()) {
-        void vscode.window.showInformationMessage(
-          'QML Preview is already running.'
-        );
+        ui.showAlreadyRunning();
         return;
       }
 
@@ -133,39 +128,18 @@ export function registerAttachQmlPreviewCommand() {
           previewManager.dispose();
           previewManager = undefined;
         }
+        ui.setPreviewStopped();
       };
 
       // Ask user for host and port
-      const hostInput = await vscode.window.showInputBox({
-        prompt: 'Enter the host address of the QML application',
-        placeHolder: '127.0.0.1',
-        value: '127.0.0.1'
-      });
-
-      if (!hostInput) {
+      const connectionInfo = await ui.promptForConnectionInfo();
+      if (!connectionInfo) {
         return;
       }
 
-      const portInput = await vscode.window.showInputBox({
-        prompt: 'Enter the port number of the QML application',
-        placeHolder: '12150',
-        validateInput: (value) => {
-          const num = parseInt(value);
-          if (isNaN(num) || num <= 0 || num > 65535) {
-            return 'Please enter a valid port number (1-65535)';
-          }
-          return undefined;
-        }
-      });
-
-      if (!portInput) {
-        return;
-      }
-
-      const port = parseInt(portInput);
       const server: Server = {
-        host: hostInput,
-        port: port,
+        host: connectionInfo.host,
+        port: connectionInfo.port,
         scheme: ServerScheme.Tcp
       };
 
@@ -182,13 +156,10 @@ export function registerAttachQmlPreviewCommand() {
 
       try {
         previewManager.connectToServer(server);
-        void vscode.window.showInformationMessage(
-          `Attached to QML Preview at ${hostInput}:${port}`
-        );
+        ui.setPreviewRunning();
+        ui.showAttachSuccess(connectionInfo.host, connectionInfo.port);
       } catch (error) {
-        void vscode.window.showErrorMessage(
-          `Failed to attach to QML Preview: ${String(error)}`
-        );
+        ui.showFailedToAttach(error);
         dispose();
         return;
       }
@@ -203,15 +174,23 @@ export function registerStopQmlPreviewCommand() {
       telemetry.sendAction('stopQmlPreview');
 
       if (!previewManager) {
-        void vscode.window.showInformationMessage(
-          'QML Preview is not running.'
-        );
+        ui.showNotRunning();
         return;
       }
 
       previewManager.dispose();
       previewManager = undefined;
-      void vscode.window.showInformationMessage('QML Preview stopped.');
+
+      if (previewProcess) {
+        logger.info(
+          `Killing QML Preview process with PID: ${previewProcess.pid}`
+        );
+        previewProcess.kill();
+        previewProcess = undefined;
+      }
+
+      ui.setPreviewStopped();
+      ui.showStopped();
     }
   );
 }
@@ -223,14 +202,12 @@ export function registerReloadQmlPreviewCommand() {
       telemetry.sendAction('reloadQmlPreview');
 
       if (!previewManager || !previewManager.isConnected()) {
-        void vscode.window.showWarningMessage(
-          'QML Preview is not connected. Please start it first.'
-        );
+        ui.showNotConnected();
         return;
       }
 
       previewManager.rerun();
-      void vscode.window.showInformationMessage('QML Preview reloaded.');
+      ui.showReloaded();
     }
   );
 }
@@ -242,33 +219,17 @@ export function registerSetQmlPreviewZoomCommand() {
       telemetry.sendAction('setQmlPreviewZoom');
 
       if (!previewManager || !previewManager.isConnected()) {
-        void vscode.window.showWarningMessage(
-          'QML Preview is not connected. Please start it first.'
-        );
+        ui.showNotConnected();
         return;
       }
 
-      const zoomStr = await vscode.window.showInputBox({
-        prompt: 'Enter zoom factor (e.g., 1.0 for 100%, 2.0 for 200%)',
-        placeHolder: '1.0',
-        validateInput: (value) => {
-          const num = parseFloat(value);
-          if (isNaN(num) || num <= 0) {
-            return 'Please enter a positive number';
-          }
-          return undefined;
-        }
-      });
-
-      if (!zoomStr) {
+      const zoom = await ui.promptForZoom();
+      if (zoom === undefined) {
         return;
       }
 
-      const zoom = parseFloat(zoomStr);
       previewManager.zoom(zoom);
-      void vscode.window.showInformationMessage(
-        `QML Preview zoom set to ${zoom}x`
-      );
+      ui.showZoomSet(zoom);
     }
   );
 }
@@ -280,14 +241,12 @@ export function registerClearQmlPreviewCacheCommand() {
       telemetry.sendAction('clearQmlPreviewCache');
 
       if (!previewManager || !previewManager.isConnected()) {
-        void vscode.window.showWarningMessage(
-          'QML Preview is not connected. Please start it first.'
-        );
+        ui.showNotConnected();
         return;
       }
 
       previewManager.clearCache();
-      void vscode.window.showInformationMessage('QML Preview cache cleared.');
+      ui.showCacheCleared();
     }
   );
 }
@@ -297,4 +256,5 @@ export function disposePreviewManager() {
     previewManager.dispose();
     previewManager = undefined;
   }
+  ui.setPreviewStopped();
 }

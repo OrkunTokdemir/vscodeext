@@ -11,10 +11,9 @@ import {
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { Mutex } from 'async-mutex';
 import path from 'path';
-import { ChildProcess, execSync } from 'child_process';
 import getPort from 'get-port';
 
-import { createLogger, delay, IsLinux, IsWindows, telemetry } from 'qt-lib';
+import { createLogger, delay, telemetry } from 'qt-lib';
 import {
   QmlDebugConnectionState,
   Server,
@@ -22,7 +21,8 @@ import {
 } from '@debug/debug-connection.mjs';
 import { QmlEngine, StepAction } from '@debug/qml-engine.mjs';
 import { projectManager } from '@/extension.mjs';
-import { spawnProcessForTool } from '@/utils.ts';
+import { spawnProcessForTool } from '@/utils.mts';
+import { QtProcess } from '@/utils.mjs';
 
 const logger = createLogger('debug-adapter');
 
@@ -79,7 +79,7 @@ export class QmlDebugSession extends LoggingDebugSession {
   private readonly _mutex = new Mutex();
   private _qmlEngine: QmlEngine | undefined;
   private _debugType: DebugType | undefined;
-  private _process: ChildProcess | undefined;
+  private _process: QtProcess | undefined;
   private readonly _breakpoints = new Map<string, QmlBreakpoint[]>();
   public constructor(session: vscode.DebugSession) {
     super();
@@ -122,22 +122,8 @@ export class QmlDebugSession extends LoggingDebugSession {
       }
       await this._qmlEngine.shutdownInferior();
       if (this._debugType === DebugType.Launch) {
-        // If we are in launch mode, we need to kill the process.
-        if (this._process?.pid) {
-          logger.info('Killing process:', this._process.pid.toString());
-          if (IsWindows) {
-            // On Windows, we need to kill the process with taskkill
-            // because ChildProcess.kill() does not work.
-            execSync(`taskkill /pid ${this._process.pid} /T /F`, {
-              stdio: 'ignore'
-            });
-          } else if (IsLinux) {
-            process.kill(-this._process.pid);
-          } else {
-            this._process.kill();
-          }
-          this._process = undefined;
-        }
+        this._process?.kill();
+        this._process = undefined;
       }
       this.sendResponse(response);
     } catch (err) {

@@ -264,7 +264,6 @@ export class QmlPreviewClient
   override stateChanged(state: QmlDebugConnectionState): void {
     logger.info('QmlPreview state changed:', QmlDebugConnectionState[state]);
     if (state === QmlDebugConnectionState.Unavailable) {
-      logger.info('<=== QmlPreviewClient became Unavailable');
       this._debugServiceUnavailable.fire();
     }
   }
