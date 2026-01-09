@@ -53,6 +53,17 @@ export function registerStartQmlPreviewCommand() {
       previewManager = new QmlPreviewConnectionManager();
       previewManager.setupFileWatcher();
 
+      // Handle connection closed (when app exits)
+      previewManager.onConnectionClosed(() => {
+        logger.info('QML Preview connection closed');
+        ui.showConnectionClosed();
+        dispose();
+        if (previewProcess) {
+          previewProcess.kill();
+          previewProcess = undefined;
+        }
+      });
+
       // Set up FPS handler (log only)
       previewManager.setFpsHandler((fps: FpsInfo) => {
         // Log FPS info to the extension output
@@ -145,6 +156,13 @@ export function registerAttachQmlPreviewCommand() {
 
       previewManager = new QmlPreviewConnectionManager();
       previewManager.setupFileWatcher();
+
+      // Handle connection closed (when app exits)
+      previewManager.onConnectionClosed(() => {
+        logger.info('QML Preview connection closed');
+        ui.showConnectionClosed();
+        dispose();
+      });
 
       // Set up FPS handler (log only)
       previewManager.setFpsHandler((fps: FpsInfo) => {

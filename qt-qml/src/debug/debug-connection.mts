@@ -68,6 +68,12 @@ export class QmlDebugConnectionManager {
   get maximumRetries() {
     return this._maximumRetries;
   }
+  get onConnectionClosed() {
+    return this._connectionClosed.event;
+  }
+  get onConnectionFailed() {
+    return this._connectionFailed.event;
+  }
   dispose() {
     if (this._connection) {
       this._connection.dispose();
