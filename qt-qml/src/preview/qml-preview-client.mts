@@ -119,7 +119,7 @@ export class QmlPreviewClient
     logger.info('Sending Zoom command:', String(zoomFactor));
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Zoom);
-    packet.writeFloatBE(zoomFactor);
+    packet.writeFloatLE(zoomFactor);
     void this.sendMessage(packet);
   }
 
@@ -201,7 +201,7 @@ export class QmlPreviewClient
     logger.info('Sending AnimationSpeed command:', String(factor));
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.AnimationSpeed);
-    packet.writeFloatBE(factor);
+    packet.writeFloatLE(factor);
     void this.sendMessage(packet);
   }
 
