@@ -28,10 +28,7 @@
   ],
   "qna": "marketplace",
   "pricing": "Free",
-  "activationEvents": [
-    "workspaceContains:**/*.qml",
-    "workspaceContains:**/qmldir"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "l10n": "./l10n",
   "contributes": {
