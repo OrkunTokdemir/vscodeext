@@ -119,7 +119,7 @@ export class QmlPreviewClient
     logger.info('Sending Zoom command:', String(zoomFactor));
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Zoom);
-    packet.writeFloatLE(zoomFactor);
+    packet.writeDoubleBE(zoomFactor);
     void this.sendMessage(packet);
   }
 
