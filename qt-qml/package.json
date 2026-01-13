@@ -82,6 +82,24 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "qt-qml.stopQmlPreview",
+          "when": "qt-qml.qmlPreviewRunning"
+        },
+        {
+          "command": "qt-qml.reloadQmlPreview",
+          "when": "qt-qml.qmlPreviewRunning"
+        },
+        {
+          "command": "qt-qml.setQmlPreviewZoom",
+          "when": "qt-qml.qmlPreviewRunning"
+        },
+        {
+          "command": "qt-qml.clearQmlPreviewCache",
+          "when": "qt-qml.qmlPreviewRunning"
+        }
+      ],
       "editor/title/run": [
         {
           "command": "qt-qml.startQmlPreview",
