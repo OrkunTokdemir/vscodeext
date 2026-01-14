@@ -72,6 +72,18 @@ export function registerStartQmlPreviewCommand() {
           `QML Preview: ${fps.numSyncs} fps (${fps.minSync}ms-${fps.maxSync}ms)`
         );
       });
+      // Get current QML file if available
+      let currentQmlFile: string | undefined;
+      const activeEditor = vscode.window.activeTextEditor;
+      if (
+        activeEditor &&
+        (activeEditor.document.languageId === 'qml' ||
+          activeEditor.document.fileName.endsWith('.qml'))
+      ) {
+        currentQmlFile = activeEditor.document.uri.fsPath;
+        logger.info('Current QML file:', currentQmlFile);
+      }
+
       // -qmljsdebugger=host:127.0.0.1,port:12150,block,services:QmlPreview,DebugTranslation
       const ret = await vscode.commands.executeCommand(
         'cmake.launchTargetPath'
@@ -83,7 +95,11 @@ export function registerStartQmlPreviewCommand() {
         return;
       }
       const previewArgs = `-qmljsdebugger=host:${server.host},port:${server.port},block,services:QmlPreview,DebugTranslation`;
-      const command = `${program} ${previewArgs}`;
+      // Add current QML file as argument if available
+      const fileArg = currentQmlFile ? `"${currentQmlFile}"` : '';
+      const command = fileArg
+        ? `${program} ${fileArg} ${previewArgs}`
+        : `${program} ${previewArgs}`;
       logger.info('Starting QML Preview with command:', command);
       previewProcess = await spawnProcessForTool(command, []);
       // Check if the process started successfully
@@ -112,6 +128,14 @@ export function registerStartQmlPreviewCommand() {
         // Get executable by using cmake.getLaunchTargetFilename
         previewManager.connectToServer(server);
         ui.setPreviewRunning();
+
+        // Load current QML file if available
+        if (currentQmlFile) {
+          // Give time for connection to establish
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          logger.info('Loading QML file:', currentQmlFile);
+          previewManager.loadUrl(currentQmlFile);
+        }
       } catch (error) {
         ui.showFailedToStart(error);
         dispose();
