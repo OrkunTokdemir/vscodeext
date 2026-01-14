@@ -52,6 +52,12 @@
         "command": "qt-qml.startQmlPreview",
         "title": "%qt-qml.command.startQmlPreview.title%",
         "category": "Qt",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "qt-qml.startQmlPreviewForCurrentFile",
+        "title": "%qt-qml.command.startQmlPreviewForCurrentFile.title%",
+        "category": "Qt",
         "icon": "$(play)"
       },
       {
@@ -100,11 +106,16 @@
           "when": "qt-qml.qmlPreviewRunning"
         }
       ],
-      "editor/title/run": [
+      "editor/title": [
         {
           "command": "qt-qml.startQmlPreview",
           "when": "resourceLangId == qml && !qt-qml.qmlPreviewRunning",
           "group": "navigation@1"
+        },
+        {
+          "command": "qt-qml.startQmlPreviewForCurrentFile",
+          "when": "resourceLangId == qml && !qt-qml.qmlPreviewRunning",
+          "group": "navigation@2"
         },
         {
           "command": "qt-qml.stopQmlPreview",

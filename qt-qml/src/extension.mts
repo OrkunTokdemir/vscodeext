@@ -28,6 +28,7 @@ import { registerResetCommand } from '@cmd/reset.mjs';
 import { registerQmlDebugAdapterFactory } from '@debug/debug-adapter.mjs';
 import {
   registerStartQmlPreviewCommand,
+  registerStartQmlPreviewForCurrentFileCommand,
   registerAttachQmlPreviewCommand,
   registerStopQmlPreviewCommand,
   registerReloadQmlPreviewCommand,
@@ -82,6 +83,7 @@ export async function activate(context: vscode.ExtensionContext) {
     registerResetCommand(),
     registerQmlDebugAdapterFactory(),
     registerStartQmlPreviewCommand(),
+    registerStartQmlPreviewForCurrentFileCommand(),
     registerAttachQmlPreviewCommand(),
     registerStopQmlPreviewCommand(),
     registerReloadQmlPreviewCommand(),
