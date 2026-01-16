@@ -346,7 +346,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     }
 
     // QRC path not found
-    logger.info('     Path not found, sending error:', `"${requestedPath}"`);
+    logger.info('Path not found, sending error:', `"${requestedPath}"`);
     this._previewClient.announceError(requestedPath);
   }
 

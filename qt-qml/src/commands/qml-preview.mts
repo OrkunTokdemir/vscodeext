@@ -3,7 +3,14 @@
 
 import * as vscode from 'vscode';
 
-import { createLogger, delay, telemetry } from 'qt-lib';
+import {
+  createLogger,
+  delay,
+  telemetry,
+  CoreKey,
+  QtWorkspaceFeatures,
+  getCoreApi
+} from 'qt-lib';
 import { EXTENSION_ID } from '@/constants.js';
 import { QmlPreviewConnectionManager } from '@preview/qml-preview-connection-manager.mjs';
 import { FpsInfo } from '@preview/qml-preview-client.mjs';
@@ -94,23 +101,101 @@ async function startQmlPreviewImpl(options: {
     );
   });
 
-  // -qmljsdebugger=host:127.0.0.1,port:12150,block,services:QmlPreview,DebugTranslation
-  const ret = await vscode.commands.executeCommand('cmake.launchTargetPath');
-  const program = ret as string;
-  if (!program) {
-    ui.showFailedToGetLaunchTarget();
+  // Detect project type
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    void vscode.window.showErrorMessage(
+      'No workspace folder found. Please open a workspace.'
+    );
     dispose();
     return;
   }
 
-  const previewArgs = `-qmljsdebugger=host:${server.host},port:${server.port},block,services:QmlPreview,DebugTranslation`;
-  // Add current QML file as argument if requested
-  const command = currentQmlFile
-    ? `${program} "${currentQmlFile}" ${previewArgs}`
-    : `${program} ${previewArgs}`;
-  logger.info('Starting QML Preview with command:', command);
+  const coreApi = await getCoreApi();
+  const features = coreApi?.getValue<QtWorkspaceFeatures>(
+    workspaceFolder,
+    CoreKey.WORKSPACE_FEATURES
+  );
+  const isPySideProject = features?.projectTypes.pyside ?? false;
+  const isCMakeProject = features?.projectTypes.cmake ?? false;
 
-  previewProcess = await spawnProcessForTool(command, []);
+  logger.info(
+    'Project type:',
+    'pyside=',
+    String(isPySideProject),
+    'cmake=',
+    String(isCMakeProject)
+  );
+
+  let program: string | undefined;
+
+  // Prepare preview arguments first
+  const previewArgs = `-qmljsdebugger=host:${server.host},port:${server.port},block,services:QmlPreview,DebugTranslation`;
+
+  if (isPySideProject) {
+    // PySide project: use pyside6-project run via qt-python extension
+    const pysideArgs = currentQmlFile
+      ? `"${currentQmlFile}" ${previewArgs}`
+      : previewArgs;
+
+    const taskExecution = await vscode.commands.executeCommand(
+      'qt-python.run',
+      pysideArgs
+    );
+
+    if (!taskExecution) {
+      void vscode.window.showErrorMessage(
+        'Failed to run PySide project. Make sure qt-python extension is installed and a valid PySide project is open.'
+      );
+      dispose();
+      return;
+    }
+
+    logger.info('PySide task started via qt-python.run');
+
+    // Monitor task termination
+    const taskEndListener = vscode.tasks.onDidEndTask((e) => {
+      if (e.execution === taskExecution) {
+        logger.info('PySide task ended');
+        if (previewManager) {
+          previewManager.dispose();
+          previewManager = undefined;
+        }
+        dispose();
+        taskEndListener.dispose();
+      }
+    });
+  } else if (isCMakeProject) {
+    // CMake project: use cmake.launchTargetPath
+    const ret = await vscode.commands.executeCommand('cmake.launchTargetPath');
+    program = ret as string;
+    if (!program) {
+      ui.showFailedToGetLaunchTarget();
+      dispose();
+      return;
+    }
+    logger.info('Using CMake target:', program);
+
+    // C++: program [currentFile] -qmljsdebugger=...
+    const fileArg = currentQmlFile ? `"${currentQmlFile}"` : '';
+    const command = fileArg
+      ? `${program} ${fileArg} ${previewArgs}`
+      : `${program} ${previewArgs}`;
+    logger.info('Starting QML Preview with command:', command);
+
+    previewProcess = await spawnProcessForTool(command, []);
+  } else {
+    void vscode.window.showErrorMessage(
+      'No Qt project detected. Please open a CMake or PySide project.'
+    );
+    dispose();
+    return;
+  }
+  if (!previewProcess) {
+    ui.showFailedToStartProcess();
+    dispose();
+    return;
+  }
   // Check if the process started successfully
   if (previewProcess.killed || previewProcess.pid === undefined) {
     ui.showFailedToStartProcess();

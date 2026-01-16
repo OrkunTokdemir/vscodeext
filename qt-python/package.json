@@ -54,6 +54,26 @@
         "command": "qt-python.installPySide6",
         "title": "%qt-python.command.installPySide6.title%",
         "category": "Qt-Python"
+      },
+      {
+        "command": "qt-python.run",
+        "title": "%qt-python.command.run.title%",
+        "category": "Qt-Python"
+      },
+      {
+        "command": "qt-python.build",
+        "title": "%qt-python.command.build.title%",
+        "category": "Qt-Python"
+      },
+      {
+        "command": "qt-python.clean",
+        "title": "%qt-python.command.clean.title%",
+        "category": "Qt-Python"
+      },
+      {
+        "command": "qt-python.deploy",
+        "title": "%qt-python.command.deploy.title%",
+        "category": "Qt-Python"
       }
     ],
     "menus": {
