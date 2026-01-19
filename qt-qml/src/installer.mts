@@ -113,21 +113,58 @@ export async function getUserConsent(): Promise<boolean> {
 
 export async function install(asset: AssetWithTag) {
   const tmpPath = path.join(DownloadDir, asset.name);
+  const backupPath = `${InstallDir}.backup`;
 
-  // download, unzip
-  logger.info(`Downloading from: ${asset.browser_download_url}`);
-  await downloadWithProgress(asset.browser_download_url, tmpPath);
-  logger.info(`Unzipping to: ${ExtractDir}`);
-  await unzipWithProgress(tmpPath);
+  try {
+    // Backup existing installation if it exists
+    if (fs.existsSync(InstallDir)) {
+      logger.info('Backing up existing qmlls installation');
+      // Remove old backup if it exists
+      if (fs.existsSync(backupPath)) {
+        fs.rmSync(backupPath, { recursive: true, force: true });
+      }
+      // Rename current installation to backup (fast atomic operation)
+      fs.renameSync(InstallDir, backupPath);
+      logger.info('Existing installation backed up');
+    }
 
-  // follow up
-  logger.info(`QML language server installed to: ${QmllsExePath}`);
-  fs.chmodSync(QmllsExePath, 0o755);
-  fs.unlinkSync(tmpPath);
-  fs.writeFileSync(
-    ReleaseJsonPath,
-    JSON.stringify({ tag_name: asset.tag_name }, null, 2)
-  );
+    // download, unzip to fresh directory
+    logger.info(`Downloading from: ${asset.browser_download_url}`);
+    await downloadWithProgress(asset.browser_download_url, tmpPath);
+    logger.info(`Unzipping to: ${ExtractDir}`);
+    await unzipWithProgress(tmpPath);
+
+    // follow up
+    logger.info(`QML language server installed to: ${QmllsExePath}`);
+    fs.chmodSync(QmllsExePath, 0o755);
+    fs.unlinkSync(tmpPath);
+    fs.writeFileSync(
+      ReleaseJsonPath,
+      JSON.stringify({ tag_name: asset.tag_name }, null, 2)
+    );
+
+    // Installation successful - remove backup
+    if (fs.existsSync(backupPath)) {
+      logger.info('Installation successful, removing backup');
+      fs.rmSync(backupPath, { recursive: true, force: true });
+    }
+  } catch (error) {
+    // Installation failed - restore from backup
+    logger.error(`Installation failed: ${String(error)}`);
+
+    if (fs.existsSync(backupPath)) {
+      logger.info('Restoring from backup');
+      // Remove failed installation
+      if (fs.existsSync(InstallDir)) {
+        fs.rmSync(InstallDir, { recursive: true, force: true });
+      }
+      // Restore backup
+      fs.renameSync(backupPath, InstallDir);
+      logger.info('Backup restored successfully');
+    }
+
+    throw error;
+  }
 }
 
 export async function fetchAssetToInstall(controller: AbortController) {
