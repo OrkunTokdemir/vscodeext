@@ -16,6 +16,19 @@ import {
 import * as unzipper from '@/unzipper.js';
 import * as downloader from '@/downloader.js';
 import { setDoNotAskForDownloadingQmlls } from '@/qmlls.mjs';
+import * as lockfileUtil from '@/lockfile.mjs';
+import type { ReleaseFunction } from '@/lockfile.mjs';
+
+/**
+ * Error thrown when qmlls installation lock cannot be acquired
+ * because another VS Code instance is installing
+ */
+export class LockAcquisitionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LockAcquisitionError';
+  }
+}
 
 const ReleaseInfoUrl = 'https://qtccache.qt.io/QMLLS/LatestRelease';
 const ReleaseInfoTimeout = 10 * 1000;
@@ -35,7 +48,7 @@ interface Asset {
   created_at: string;
 }
 
-function installerDir() {
+export function installerDir() {
   if (!UserLocalDir) {
     throw new Error('Cannot determine the user local directory');
   }
@@ -114,8 +127,17 @@ export async function getUserConsent(): Promise<boolean> {
 export async function install(asset: AssetWithTag) {
   const tmpPath = path.join(DownloadDir, asset.name);
   const backupPath = `${InstallDir}.backup`;
+  let release: ReleaseFunction | null = null;
 
   try {
+    // Acquire lock to prevent concurrent installations from multiple VS Code instances
+    release = await lockfileUtil.acquireLock();
+    if (!release) {
+      throw new LockAcquisitionError(
+        'Another VS Code instance is currently installing the QML language server'
+      );
+    }
+
     // Backup existing installation if it exists
     if (fs.existsSync(InstallDir)) {
       logger.info('Backing up existing qmlls installation');
@@ -164,6 +186,9 @@ export async function install(asset: AssetWithTag) {
     }
 
     throw error;
+  } finally {
+    // Always release the lock
+    await lockfileUtil.releaseLock(release);
   }
 }
 

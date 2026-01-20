@@ -170,9 +170,11 @@ export class Qmlls {
   }
 
   public static async install(asset: installer.AssetWithTag) {
-    // Prevent concurrent installations
+    // Prevent concurrent installations within the same instance
     if (Qmlls._isInstalling) {
-      logger.info('Installation already in progress, skipping');
+      logger.info(
+        'Installation already in progress in this instance, skipping'
+      );
       void vscode.window.showWarningMessage(
         'QML language server installation is already in progress. Please wait for it to complete.'
       );
@@ -189,7 +191,21 @@ export class Qmlls {
       await installer.install(asset);
       logger.info('Installation done');
     } catch (error) {
-      logger.warn(isError(error) ? error.message : String(error));
+      const errorMessage = isError(error) ? error.message : String(error);
+      logger.warn(errorMessage);
+
+      // Show user-friendly message if another instance is installing
+      if (error instanceof installer.LockAcquisitionError) {
+        void vscode.window.showWarningMessage(
+          'Another VS Code instance is currently installing the QML language server. ' +
+            'Please wait for it to complete, then restart this instance.'
+        );
+      } else {
+        void vscode.window.showErrorMessage(
+          `Failed to install QML language server: ${errorMessage}`
+        );
+      }
+      throw error;
     } finally {
       Qmlls._isInstalling = false;
     }
