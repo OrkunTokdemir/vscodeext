@@ -19,6 +19,7 @@ export interface FpsDisplayInfo {
 export class QmlPreviewUI {
   private readonly _fpsStatusItem: vscode.StatusBarItem;
   private _lastValidFps = 0;
+  private _progressResolve: (() => void) | undefined;
 
   constructor() {
     this._fpsStatusItem = vscode.window.createStatusBarItem(
@@ -57,6 +58,7 @@ export class QmlPreviewUI {
   }
 
   dispose() {
+    this.removeWaitingForConnection();
     this._fpsStatusItem.dispose();
   }
 
@@ -107,11 +109,50 @@ export class QmlPreviewUI {
   }
 
   showFailedToAttach(error: unknown) {
+    this.removeWaitingForConnection();
     this.showError(`Failed to attach to QML Preview: ${String(error)}`);
   }
 
   showAttachSuccess(host: string, port: number) {
-    this.showInfo(`Attached to QML Preview at ${host}:${port}`);
+    this.removeWaitingForConnection();
+    // Remove notification after 5 seconds
+    const title = `QML Preview attached successfully at ${host}:${port}`;
+    const progressOptions = {
+      title: title,
+      location: vscode.ProgressLocation.Notification,
+      cancellable: false
+    };
+    const timeout = 5000;
+    void vscode.window.withProgress(progressOptions, async (progress) => {
+      progress.report({ increment: 100 });
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve();
+        }, timeout);
+      });
+    });
+  }
+
+  showWaitingForConnection(host: string, port: number) {
+    const title = `Connecting to QML Preview at ${host}:${port}...`;
+    const progressOptions = {
+      title: title,
+      location: vscode.ProgressLocation.Notification,
+      cancellable: false
+    };
+
+    return vscode.window.withProgress(progressOptions, async () => {
+      return new Promise<void>((resolve) => {
+        this._progressResolve = resolve;
+      });
+    });
+  }
+
+  removeWaitingForConnection() {
+    if (this._progressResolve) {
+      this._progressResolve();
+      this._progressResolve = undefined;
+    }
   }
 
   showReloaded() {

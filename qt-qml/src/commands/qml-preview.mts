@@ -219,10 +219,30 @@ export function registerAttachQmlPreviewCommand() {
       const projectBuildDirs = projectManager.getBuildDirs();
       previewManager.buildDirs = [...projectBuildDirs, ...additionalBuildDirs];
 
+      // Show waiting notification
+      void ui.showWaitingForConnection(
+        connectionInfo.host,
+        connectionInfo.port
+      );
+
       // Handle connection closed (when app exits)
       previewManager.onConnectionClosed(() => {
         logger.info('QML Preview connection closed');
         ui.showConnectionClosed();
+        dispose();
+      });
+
+      // Handle connection opened
+      previewManager.onConnectionOpened(() => {
+        logger.info('QML Preview connection opened');
+        ui.setPreviewRunning();
+        ui.showAttachSuccess(connectionInfo.host, connectionInfo.port);
+      });
+
+      // Handle connection failed
+      previewManager.onConnectionFailed(() => {
+        logger.info('QML Preview connection failed');
+        ui.showFailedToAttach(new Error('Connection failed'));
         dispose();
       });
 
@@ -234,15 +254,8 @@ export function registerAttachQmlPreviewCommand() {
         );
       });
 
-      try {
-        previewManager.connectToServer(server);
-        ui.setPreviewRunning();
-        ui.showAttachSuccess(connectionInfo.host, connectionInfo.port);
-      } catch (error) {
-        ui.showFailedToAttach(error);
-        dispose();
-        return;
-      }
+      // Initiate connection (events will handle success/failure)
+      previewManager.connectToServer(server);
     }
   );
 }

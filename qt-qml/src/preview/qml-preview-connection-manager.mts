@@ -157,6 +157,12 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     logger.info('Creating QmlPreviewClient');
     this._previewClient = new QmlPreviewClient(connection);
 
+    // Connect to connection's onConnected event (fires after hello message)
+    connection.onConnected(() => {
+      logger.info('QML Preview connection established (got hello)');
+      this._connectionOpened.fire();
+    });
+
     // Connect signals to slots (using event pattern)
     // Maps to Qt's connect() calls
 
