@@ -77,13 +77,9 @@ async function startQmlPreviewImpl(options: { loadCurrentFile: boolean }) {
     }
   });
 
-  // Set up FPS handler (log only)
+  // Set up FPS handler to display in status bar
   previewManager.setFpsHandler((fps: FpsInfo) => {
-    // Log FPS info to the extension output
-    // eslint-disable-next-line no-console
-    console.log(
-      `QML Preview: ${fps.numSyncs} fps (${fps.minSync}ms-${fps.maxSync}ms)`
-    );
+    ui.updateFps(fps);
   });
 
   // -qmljsdebugger=host:127.0.0.1,port:12150,block,services:QmlPreview,DebugTranslation

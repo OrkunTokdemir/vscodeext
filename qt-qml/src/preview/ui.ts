@@ -7,9 +7,59 @@ export interface AttachConnectionInfo {
   host: string;
   port: number;
 }
+export interface FpsDisplayInfo {
+  numSyncs: number;
+  minSync: number;
+  maxSync: number;
+  minRender: number;
+  maxRender: number;
+}
 
 /* eslint-disable @typescript-eslint/class-methods-use-this */
 export class QmlPreviewUI {
+  private readonly _fpsStatusItem: vscode.StatusBarItem;
+  private _lastValidFps = 0;
+
+  constructor() {
+    this._fpsStatusItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      100
+    );
+    this._fpsStatusItem.name = 'QML Preview FPS';
+  }
+
+  updateFps(fps: FpsDisplayInfo) {
+    const frames = fps.numSyncs;
+    if (frames !== 0) {
+      this._lastValidFps = frames;
+    }
+
+    let fpsText: string;
+    if (this._lastValidFps === 0 || (frames === 0 && this._lastValidFps < 2)) {
+      fpsText = '-- FPS';
+    } else {
+      fpsText = `${this._lastValidFps} FPS`;
+    }
+
+    this._fpsStatusItem.text = `$(pulse) ${fpsText}`;
+    this._fpsStatusItem.tooltip = `QML Preview\nSync: ${fps.minSync}ms - ${fps.maxSync}ms\nRender: ${fps.minRender}ms - ${fps.maxRender}ms`;
+  }
+
+  showFpsStatus() {
+    this._fpsStatusItem.text = '$(pulse) -- FPS';
+    this._fpsStatusItem.tooltip = 'QML Preview FPS';
+    this._fpsStatusItem.show();
+  }
+
+  hideFpsStatus() {
+    this._lastValidFps = 0;
+    this._fpsStatusItem.hide();
+  }
+
+  dispose() {
+    this._fpsStatusItem.dispose();
+  }
+
   showError(message: string) {
     void vscode.window.showErrorMessage(message);
   }
@@ -86,6 +136,7 @@ export class QmlPreviewUI {
       'qt-qml.qmlPreviewRunning',
       true
     );
+    this.showFpsStatus();
   }
 
   setPreviewStopped() {
@@ -94,6 +145,7 @@ export class QmlPreviewUI {
       'qt-qml.qmlPreviewRunning',
       false
     );
+    this.hideFpsStatus();
   }
 
   async promptForHost() {
