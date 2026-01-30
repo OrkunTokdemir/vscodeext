@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 
 import { createLogger, delay, telemetry } from 'qt-lib';
 import { EXTENSION_ID } from '@/constants.js';
+import { projectManager } from '@/extension.mjs';
 import { QmlPreviewConnectionManager } from '@preview/qml-preview-connection-manager.mjs';
 import { FpsInfo } from '@preview/qml-preview-client.mjs';
 import { Server, ServerScheme } from '@debug/debug-connection.mjs';
@@ -60,6 +61,13 @@ async function startQmlPreviewImpl(options: { loadCurrentFile: boolean }) {
 
   previewManager = new QmlPreviewConnectionManager();
   previewManager.setupFileWatcher();
+
+  // Configure build directories for QRC file resolution
+  const additionalBuildDirs = vscode.workspace
+    .getConfiguration('qt-qml.preview')
+    .get<string[]>('additionalBuildDirs', []);
+  const projectBuildDirs = projectManager.getBuildDirs();
+  previewManager.buildDirs = [...projectBuildDirs, ...additionalBuildDirs];
 
   // Handle connection closed (when app exits or user closes preview window)
   previewManager.onConnectionClosed(() => {
@@ -203,6 +211,13 @@ export function registerAttachQmlPreviewCommand() {
 
       previewManager = new QmlPreviewConnectionManager();
       previewManager.setupFileWatcher();
+
+      // Configure build directories for QRC file resolution
+      const additionalBuildDirs = vscode.workspace
+        .getConfiguration('qt-qml.preview')
+        .get<string[]>('additionalBuildDirs', []);
+      const projectBuildDirs = projectManager.getBuildDirs();
+      previewManager.buildDirs = [...projectBuildDirs, ...additionalBuildDirs];
 
       // Handle connection closed (when app exits)
       previewManager.onConnectionClosed(() => {

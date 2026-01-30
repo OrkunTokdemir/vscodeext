@@ -263,6 +263,15 @@
           "default": false,
           "description": "Do not ask for downloading QML Language Server",
           "scope": "machine"
+        },
+        "qt-qml.preview.additionalBuildDirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional build directories to search for QRC files during QML Preview. Useful when the build directory is outside the workspace.",
+          "scope": "machine-overridable"
         }
       }
     },
