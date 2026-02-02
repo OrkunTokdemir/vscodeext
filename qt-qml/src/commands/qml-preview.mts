@@ -219,10 +219,18 @@ export function registerAttachQmlPreviewCommand() {
       const projectBuildDirs = projectManager.getBuildDirs();
       previewManager.buildDirs = [...projectBuildDirs, ...additionalBuildDirs];
 
-      // Show waiting notification
+      // Show waiting notification with cancel callback
       void ui.showWaitingForConnection(
         connectionInfo.host,
-        connectionInfo.port
+        connectionInfo.port,
+        () => {
+          // User clicked cancel
+          logger.info('User canceled connection attempt');
+          if (previewManager) {
+            previewManager.cancelConnection();
+          }
+          dispose();
+        }
       );
 
       // Handle connection closed (when app exits)

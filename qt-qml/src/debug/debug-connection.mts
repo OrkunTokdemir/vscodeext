@@ -85,6 +85,11 @@ export class QmlDebugConnectionManager {
       this._connection.dispose();
     }
   }
+  cancelConnection() {
+    logger.info('Canceling connection attempt');
+    this.stopConnectionTimer();
+    this.destroyConnection();
+  }
   disconnectToConnection() {
     if (this._connection) {
       this._connection.disconnect();
@@ -209,7 +214,8 @@ export class QmlDebugConnectionManager {
       return;
     }
     logger.info('Connection closed');
-    // this.destroyConnection(); // TODO: Implement
+    this.stopConnectionTimer();
+    this.destroyConnection();
     this._connectionClosed.fire();
   }
   qmlDebugConnectionFailed() {

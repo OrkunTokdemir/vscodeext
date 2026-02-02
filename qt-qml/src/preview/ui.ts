@@ -133,19 +133,34 @@ export class QmlPreviewUI {
     });
   }
 
-  showWaitingForConnection(host: string, port: number) {
+  showWaitingForConnection(host: string, port: number, onCancel?: () => void) {
     const title = `Connecting to QML Preview at ${host}:${port}...`;
     const progressOptions = {
       title: title,
       location: vscode.ProgressLocation.Notification,
-      cancellable: false
+      cancellable: true
     };
 
-    return vscode.window.withProgress(progressOptions, async () => {
-      return new Promise<void>((resolve) => {
-        this._progressResolve = resolve;
-      });
-    });
+    return vscode.window.withProgress(
+      progressOptions,
+      async (progress, token) => {
+        void progress;
+        // Handle cancellation
+        token.onCancellationRequested(() => {
+          if (onCancel) {
+            onCancel();
+          }
+          if (this._progressResolve) {
+            this._progressResolve();
+            this._progressResolve = undefined;
+          }
+        });
+
+        return new Promise<void>((resolve) => {
+          this._progressResolve = resolve;
+        });
+      }
+    );
   }
 
   removeWaitingForConnection() {
