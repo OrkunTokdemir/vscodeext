@@ -182,10 +182,6 @@ export class QmlPreviewUI {
     this.showInfo('QML Preview cache cleared.');
   }
 
-  showConnectionClosed() {
-    this.showInfo('QML Preview connection closed.');
-  }
-
   setPreviewRunning() {
     void vscode.commands.executeCommand(
       'setContext',
