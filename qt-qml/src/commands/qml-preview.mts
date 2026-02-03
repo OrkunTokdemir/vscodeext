@@ -235,7 +235,14 @@ export function registerAttachQmlPreviewCommand() {
 
       // Handle connection closed (when app exits)
       previewManager.onConnectionClosed(() => {
-        logger.info('QML Preview connection closed');
+        logger.info('QML Preview connection closed in attach mode');
+        ui.showConnectionClosed();
+        dispose();
+      });
+
+      // Handle debug service unavailable - stop immediately in attach mode
+      previewManager.onDebugServiceUnavailable(() => {
+        logger.info('QML Preview debug service unavailable in attach mode');
         ui.showConnectionClosed();
         dispose();
       });

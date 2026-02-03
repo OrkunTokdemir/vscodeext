@@ -69,6 +69,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
   // Maps to: signals in QmlPreviewConnectionManager
   private readonly _onRestart = new vscode.EventEmitter<void>();
   private readonly _onLanguageChange = new vscode.EventEmitter<string>();
+  private readonly _onDebugServiceUnavailable = new vscode.EventEmitter<void>();
   constructor() {
     super();
     this._qrcFinder = new QrcResourceFinder();
@@ -97,6 +98,10 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
 
   get onLanguageChange() {
     return this._onLanguageChange.event;
+  }
+
+  get onDebugServiceUnavailable() {
+    return this._onDebugServiceUnavailable.event;
   }
 
   /**
@@ -192,6 +197,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     // Signal: debugServiceUnavailable -> Slot: show warning
     this._previewClient.onDebugServiceUnavailable(() => {
       logger.info('QmlPreviewClient reported Debug Service Unavailable');
+      this._onDebugServiceUnavailable.fire();
     });
 
     logger.info('QmlPreviewClient created and connected');
@@ -693,6 +699,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
     // Dispose event emitters
     this._onRestart.dispose();
     this._onLanguageChange.dispose();
+    this._onDebugServiceUnavailable.dispose();
 
     // Clear tracked data structures
     this._watchedFiles.clear();
