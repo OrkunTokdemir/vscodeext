@@ -40,11 +40,15 @@ import {
   acquirePortTaskProvider,
   AcquirePortTaskProvider
 } from './tasks/acquire-port.mjs';
+import {
+  qmlPreviewTaskProvider,
+  QmlPreviewTaskProvider
+} from './tasks/qml-preview-task.mjs';
 
 export let projectManager: QMLProjectManager;
 export let coreAPI: CoreAPI | undefined;
 
-let taskProvider: vscode.Disposable | undefined;
+const taskProviders: vscode.Disposable[] = [];
 
 const logger = createLogger('extension');
 
@@ -90,9 +94,15 @@ export async function activate(context: vscode.ExtensionContext) {
     registerSetQmlPreviewZoomCommand(),
     registerClearQmlPreviewCacheCommand()
   );
-  taskProvider = vscode.tasks.registerTaskProvider(
-    AcquirePortTaskProvider.type,
-    acquirePortTaskProvider
+  taskProviders.push(
+    vscode.tasks.registerTaskProvider(
+      AcquirePortTaskProvider.type,
+      acquirePortTaskProvider
+    ),
+    vscode.tasks.registerTaskProvider(
+      QmlPreviewTaskProvider.type,
+      qmlPreviewTaskProvider
+    )
   );
   telemetry.sendEvent(`activated`);
   projectManager.getConfigValues();
@@ -116,8 +126,8 @@ export function deactivate() {
   telemetry.dispose();
   projectManager.dispose();
   disposePreviewManager();
-  if (taskProvider) {
-    taskProvider.dispose();
+  for (const provider of taskProviders) {
+    provider.dispose();
   }
 }
 

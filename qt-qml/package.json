@@ -484,13 +484,60 @@
           }
         ]
       }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "Qt"
+      },
+      {
+        "type": "qml-preview",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "The QML Preview task type",
+            "enum": [
+              "QML Preview Launch",
+              "QML Preview Attach"
+            ]
+          },
+          "program": {
+            "type": "string",
+            "description": "Path to the program to be launched (Launch only). Defaults to cmake.launchTargetPath if not specified."
+          },
+          "qmlFile": {
+            "type": "string",
+            "description": "QML file to load in preview (Launch only, optional)"
+          },
+          "host": {
+            "type": "string",
+            "description": "Host address for the preview connection",
+            "default": "127.0.0.1"
+          },
+          "port": {
+            "type": "number",
+            "description": "Port for the preview connection. Required for Attach, auto-assigned for Launch if not specified."
+          },
+          "buildDirs": {
+            "type": "array",
+            "description": "Additional build directories for QRC file resolution",
+            "items": {
+              "type": "string"
+            }
+          },
+          "args": {
+            "type": "array",
+            "description": "Additional command line arguments passed to the program (Launch only)",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     ]
   },
-  "taskDefinitions": [
-    {
-      "type": "Qt"
-    }
-  ],
   "extensionDependencies": [
     "theqtcompany.qt-core"
   ],
