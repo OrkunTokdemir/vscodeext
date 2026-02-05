@@ -490,26 +490,15 @@
         "type": "Qt"
       },
       {
-        "type": "qml-preview",
-        "required": [
-          "action"
-        ],
+        "type": "qmlpreview-launch",
         "properties": {
-          "action": {
-            "type": "string",
-            "description": "The QML Preview task type",
-            "enum": [
-              "QML Preview Launch",
-              "QML Preview Attach"
-            ]
-          },
           "program": {
             "type": "string",
-            "description": "Path to the program to be launched (Launch only). Defaults to cmake.launchTargetPath if not specified."
+            "description": "Path to the program to be launched. Defaults to cmake.launchTargetPath if not specified."
           },
           "qmlFile": {
             "type": "string",
-            "description": "QML file to load in preview (Launch only, optional)"
+            "description": "QML file to load in preview (optional)"
           },
           "host": {
             "type": "string",
@@ -518,7 +507,7 @@
           },
           "port": {
             "type": "number",
-            "description": "Port for the preview connection. Required for Attach, auto-assigned for Launch if not specified."
+            "description": "Port for the preview connection (optional, auto-assigned if not specified)"
           },
           "buildDirs": {
             "type": "array",
@@ -529,7 +518,31 @@
           },
           "args": {
             "type": "array",
-            "description": "Additional command line arguments passed to the program (Launch only)",
+            "description": "Additional command line arguments passed to the program",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "type": "qmlpreview-attach",
+        "required": [
+          "host",
+          "port"
+        ],
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Host address to attach to"
+          },
+          "port": {
+            "type": "number",
+            "description": "Port to attach to"
+          },
+          "buildDirs": {
+            "type": "array",
+            "description": "Additional build directories for QRC file resolution",
             "items": {
               "type": "string"
             }

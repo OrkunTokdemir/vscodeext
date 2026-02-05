@@ -17,7 +17,7 @@ import { QmlPreviewUI } from '@preview/ui.js';
  * Task definition for QML Preview Launch
  */
 export interface QmlPreviewLaunchTaskDefinition extends vscode.TaskDefinition {
-  action: 'QML Preview Launch';
+  type: 'qmlpreview-launch';
   /**
    * Path to the program to be launched
    */
@@ -48,7 +48,6 @@ export interface QmlPreviewLaunchTaskDefinition extends vscode.TaskDefinition {
  * Task definition for QML Preview Attach
  */
 export interface QmlPreviewAttachTaskDefinition extends vscode.TaskDefinition {
-  action: 'QML Preview Attach';
   /**
    * Host address to attach to
    */
@@ -111,13 +110,47 @@ class QmlPreviewTaskTerminal implements vscode.Pseudoterminal {
     this._ui.setPreviewStopped();
   }
 
+  private async resolveVariables(value: string | undefined) {
+    if (!value) {
+      return undefined;
+    }
+
+    // Resolve ${command:...} variables
+    const commandRegex = /\$\{command:([^}]+)\}/g;
+    let resolved = value;
+    const matches = value.matchAll(commandRegex);
+
+    for (const match of matches) {
+      const commandId = match[1];
+      if (!commandId) {
+        continue;
+      }
+
+      try {
+        const result = await vscode.commands.executeCommand(commandId);
+        if (typeof result === 'string') {
+          resolved = resolved.replace(match[0], result);
+        }
+      } catch (error) {
+        this.write(
+          `Warning: Failed to resolve command '${commandId}': ${String(error)}`
+        );
+      }
+    }
+
+    return resolved;
+  }
+
   private async launch(definition: QmlPreviewLaunchTaskDefinition) {
     telemetry.sendAction('qmlPreviewTaskLaunch');
     this.write('Starting QML Preview Launch task...');
 
+    const program = await this.resolveVariables(definition.program);
+    const qmlFile = await this.resolveVariables(definition.qmlFile);
+
     const options: QmlPreviewLaunchOptions = {
-      program: definition.program,
-      qmlFile: definition.qmlFile,
+      program,
+      qmlFile,
       host: definition.host,
       port: definition.port,
       buildDirs: definition.buildDirs,
@@ -151,7 +184,6 @@ class QmlPreviewTaskTerminal implements vscode.Pseudoterminal {
     if (this._session) {
       this._ui.setPreviewRunning();
 
-      // Handle process stdout/stderr
       this._session.process?.stdout?.on('data', (data: Buffer) => {
         this.write(`[stdout] ${data.toString().trim()}`);
       });
@@ -211,12 +243,12 @@ class QmlPreviewTaskTerminal implements vscode.Pseudoterminal {
 }
 
 /**
- * Task provider for QML Preview tasks
+ * Task provider for QML Preview Launch tasks
  */
-export class QmlPreviewTaskProvider implements vscode.TaskProvider {
-  static readonly type = 'qml-preview';
+export class QmlPreviewLaunchTaskProvider implements vscode.TaskProvider {
+  static readonly type = 'qmlpreview-launch';
 
-  private static createLaunchTask(
+  private static createTask(
     definition: QmlPreviewLaunchTaskDefinition
   ): vscode.Task {
     // eslint-disable-next-line @typescript-eslint/require-await
@@ -228,13 +260,35 @@ export class QmlPreviewTaskProvider implements vscode.TaskProvider {
       definition,
       vscode.TaskScope.Workspace,
       'QML Preview Launch',
-      QmlPreviewTaskProvider.type,
+      QmlPreviewLaunchTaskProvider.type,
       new vscode.CustomExecution(taskCallback),
       []
     );
   }
 
-  private static createAttachTask(
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  public provideTasks(): vscode.Task[] {
+    // Provide default launch task
+    const definition: QmlPreviewLaunchTaskDefinition = {
+      type: QmlPreviewLaunchTaskProvider.type
+    };
+    return [QmlPreviewLaunchTaskProvider.createTask(definition)];
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  public resolveTask(task: vscode.Task): vscode.Task | undefined {
+    const definition = task.definition as QmlPreviewLaunchTaskDefinition;
+    return QmlPreviewLaunchTaskProvider.createTask(definition);
+  }
+}
+
+/**
+ * Task provider for QML Preview Attach tasks
+ */
+export class QmlPreviewAttachTaskProvider implements vscode.TaskProvider {
+  static readonly type = 'qmlpreview-attach';
+
+  private static createTask(
     definition: QmlPreviewAttachTaskDefinition
   ): vscode.Task {
     // eslint-disable-next-line @typescript-eslint/require-await
@@ -246,7 +300,7 @@ export class QmlPreviewTaskProvider implements vscode.TaskProvider {
       definition,
       vscode.TaskScope.Workspace,
       'QML Preview Attach',
-      QmlPreviewTaskProvider.type,
+      QmlPreviewAttachTaskProvider.type,
       new vscode.CustomExecution(taskCallback),
       []
     );
@@ -254,43 +308,21 @@ export class QmlPreviewTaskProvider implements vscode.TaskProvider {
 
   // eslint-disable-next-line @typescript-eslint/class-methods-use-this
   public provideTasks(): vscode.Task[] {
-    const tasks: vscode.Task[] = [];
-
-    // Provide default launch task
-    const launchDefinition: QmlPreviewLaunchTaskDefinition = {
-      type: QmlPreviewTaskProvider.type,
-      action: 'QML Preview Launch'
-    };
-    tasks.push(QmlPreviewTaskProvider.createLaunchTask(launchDefinition));
-
     // Provide default attach task (requires user configuration)
-    const attachDefinition: QmlPreviewAttachTaskDefinition = {
-      type: QmlPreviewTaskProvider.type,
-      action: 'QML Preview Attach',
+    const definition: QmlPreviewAttachTaskDefinition = {
+      type: QmlPreviewAttachTaskProvider.type,
       host: 'localhost',
       port: 12150
     };
-    tasks.push(QmlPreviewTaskProvider.createAttachTask(attachDefinition));
-
-    return tasks;
+    return [QmlPreviewAttachTaskProvider.createTask(definition)];
   }
 
   // eslint-disable-next-line @typescript-eslint/class-methods-use-this
   public resolveTask(task: vscode.Task): vscode.Task | undefined {
-    const definition = task.definition;
-
-    if (definition.task === 'QML Preview Launch') {
-      return QmlPreviewTaskProvider.createLaunchTask(
-        definition as QmlPreviewLaunchTaskDefinition
-      );
-    } else if (definition.task === 'QML Preview Attach') {
-      return QmlPreviewTaskProvider.createAttachTask(
-        definition as QmlPreviewAttachTaskDefinition
-      );
-    }
-
-    return undefined;
+    const definition = task.definition as QmlPreviewAttachTaskDefinition;
+    return QmlPreviewAttachTaskProvider.createTask(definition);
   }
 }
 
-export const qmlPreviewTaskProvider = new QmlPreviewTaskProvider();
+export const qmlPreviewLaunchTaskProvider = new QmlPreviewLaunchTaskProvider();
+export const qmlPreviewAttachTaskProvider = new QmlPreviewAttachTaskProvider();

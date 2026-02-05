@@ -13,116 +13,38 @@ import { QtProcess, spawnProcessForTool } from '@/utils.mts';
 
 const logger = createLogger('qml-preview-service');
 
-/**
- * Options for launching QML Preview
- */
 export interface QmlPreviewLaunchOptions {
-  /**
-   * Path to the program to be launched
-   * If not specified, uses cmake.launchTargetPath
-   */
   program?: string | undefined;
-  /**
-   * QML file to load in preview (optional)
-   */
   qmlFile?: string | undefined;
-  /**
-   * Host address for the preview connection
-   * Default: '127.0.0.1'
-   */
   host?: string | undefined;
-  /**
-   * Port for the preview connection
-   * If not specified, a free port will be auto-assigned
-   */
   port?: number | undefined;
-  /**
-   * Additional build directories for QRC file resolution
-   */
   buildDirs?: string[] | undefined;
-  /**
-   * Additional command line arguments passed to the program
-   */
   args?: string[] | undefined;
 }
 
-/**
- * Options for attaching to QML Preview
- */
 export interface QmlPreviewAttachOptions {
-  /**
-   * Host address to attach to
-   */
   host: string;
-  /**
-   * Port to attach to
-   */
   port: number;
-  /**
-   * Additional build directories for QRC file resolution
-   */
   buildDirs?: string[] | undefined;
 }
 
-/**
- * Callbacks for QML Preview events
- */
 export interface QmlPreviewCallbacks {
-  /**
-   * Called when a message should be logged/displayed
-   */
   onMessage?: (message: string) => void;
-  /**
-   * Called when an error occurs
-   */
   onError?: (error: string) => void;
-  /**
-   * Called when the preview connection is closed
-   */
   onConnectionClosed?: () => void;
-  /**
-   * Called when the preview connection is opened
-   */
   onConnectionOpened?: () => void;
-  /**
-   * Called when the preview connection fails
-   */
   onConnectionFailed?: () => void;
-  /**
-   * Called when the preview process exits
-   */
   onProcessExit?: (code: number | null, signal: NodeJS.Signals | null) => void;
-  /**
-   * Called with FPS info updates
-   */
   onFps?: (fps: FpsInfo) => void;
-  /**
-   * Called when debug service is unavailable
-   */
   onDebugServiceUnavailable?: () => void;
 }
 
-/**
- * Result of a QML Preview launch or attach operation
- */
 export interface QmlPreviewSession {
-  /**
-   * The preview connection manager
-   */
   manager: QmlPreviewConnectionManager;
-  /**
-   * The preview process (only for launch)
-   */
   process?: QtProcess;
-  /**
-   * Server connection info
-   */
   server: Server;
 }
 
-/**
- * Creates and configures a QmlPreviewConnectionManager
- */
 export function createPreviewManager(
   buildDirs?: string[],
   callbacks?: QmlPreviewCallbacks
@@ -130,7 +52,6 @@ export function createPreviewManager(
   const manager = new QmlPreviewConnectionManager();
   manager.setupFileWatcher();
 
-  // Configure build directories for QRC file resolution
   const additionalBuildDirs = vscode.workspace
     .getConfiguration('qt-qml.preview')
     .get<string[]>('additionalBuildDirs', []);
@@ -141,7 +62,6 @@ export function createPreviewManager(
     ...(buildDirs ?? [])
   ];
 
-  // Set up event handlers if callbacks provided
   if (callbacks) {
     if (callbacks.onConnectionClosed) {
       manager.onConnectionClosed(callbacks.onConnectionClosed);
@@ -163,12 +83,7 @@ export function createPreviewManager(
   return manager;
 }
 
-/**
- * Gets the program path, either from options or from cmake.launchTargetPath
- */
-export async function resolveProgram(
-  program?: string
-): Promise<string | undefined> {
+export async function resolveProgram(program?: string) {
   if (program) {
     return program;
   }
@@ -176,27 +91,17 @@ export async function resolveProgram(
   return ret as string | undefined;
 }
 
-/**
- * Gets a free port or uses the specified one
- */
-export async function resolvePort(port?: number): Promise<number | undefined> {
+export async function resolvePort(port?: number) {
   if (port) {
     return port;
   }
   return getPort();
 }
 
-/**
- * Builds the preview debugger arguments string
- */
-export function buildPreviewArgs(host: string, port: number): string {
+export function buildPreviewArgs(host: string, port: number) {
   return `-qmljsdebugger=host:${host},port:${port},block,services:QmlPreview,DebugTranslation`;
 }
 
-/**
- * Launches a QML Preview session
- * @returns The preview session or undefined if launch failed
- */
 export async function launchQmlPreview(
   options: QmlPreviewLaunchOptions,
   callbacks?: QmlPreviewCallbacks
@@ -210,7 +115,6 @@ export async function launchQmlPreview(
     callbacks?.onError?.(msg);
   };
 
-  // Resolve program path
   const program = await resolveProgram(options.program);
   if (!program) {
     error('Failed to get launch target executable');
@@ -218,7 +122,6 @@ export async function launchQmlPreview(
   }
   log(`Program: ${program}`);
 
-  // Resolve host and port
   const host = options.host ?? '127.0.0.1';
   const port = await resolvePort(options.port);
   if (!port) {
@@ -233,17 +136,14 @@ export async function launchQmlPreview(
     scheme: ServerScheme.Tcp
   };
 
-  // Create preview manager
   const manager = createPreviewManager(options.buildDirs, callbacks);
 
-  // Build command
   const previewArgs = buildPreviewArgs(host, port);
   const additionalArgs = options.args ?? [];
   const command = `${program} ${previewArgs}`;
   log(`Command: ${command} ${additionalArgs.join(' ')}`);
 
   try {
-    // Spawn process
     const process = await spawnProcessForTool(command, additionalArgs);
 
     if (process.killed || process.pid === undefined) {
@@ -253,17 +153,14 @@ export async function launchQmlPreview(
     }
     log(`QML Preview process started with PID: ${process.pid}`);
 
-    // Handle process exit
     process.on('exit', (code, signal) => {
       log(`QML Preview process exited with code ${code}, signal ${signal}`);
       callbacks?.onProcessExit?.(code, signal);
     });
 
-    // Connect to server
     manager.connectToServer(server);
     log('QML Preview connected successfully');
 
-    // Load QML file if specified
     if (options.qmlFile) {
       await delay(500);
       log(`Loading QML file: ${options.qmlFile}`);
@@ -278,10 +175,6 @@ export async function launchQmlPreview(
   }
 }
 
-/**
- * Attaches to an existing QML Preview session
- * @returns The preview session or undefined if attach failed
- */
 export function attachQmlPreview(
   options: QmlPreviewAttachOptions,
   callbacks?: QmlPreviewCallbacks
@@ -307,7 +200,6 @@ export function attachQmlPreview(
     scheme: ServerScheme.Tcp
   };
 
-  // Create preview manager
   const manager = createPreviewManager(options.buildDirs, callbacks);
 
   try {
@@ -321,9 +213,6 @@ export function attachQmlPreview(
   }
 }
 
-/**
- * Disposes a QML Preview session
- */
 export function disposeSession(session: QmlPreviewSession | undefined) {
   if (!session) {
     return;

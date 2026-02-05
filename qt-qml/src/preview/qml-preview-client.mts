@@ -60,7 +60,6 @@ export class QmlPreviewClient
   extends QmlDebugClient
   implements IQmlDebugClient
 {
-  // Signals (using EventEmitter pattern)
   private readonly _pathRequested = new vscode.EventEmitter<string>();
   private readonly _errorReported = new vscode.EventEmitter<string>();
   private readonly _fpsReported = new vscode.EventEmitter<FpsInfo>();
@@ -71,7 +70,6 @@ export class QmlPreviewClient
     logger.info('QmlPreviewClient created');
   }
 
-  // Signal accessors (public event properties)
   get onPathRequested() {
     return this._pathRequested.event;
   }
@@ -114,7 +112,6 @@ export class QmlPreviewClient
     logger.info('Sending Load command for URL:', `"${fileUrl}"`);
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.Load);
-    // QUrl is serialized as QByteArray (UTF-8 encoded bytes), not QString (UTF-16)
     packet.writeStringUTF8(fileUrl);
     void this.sendMessage(packet);
   }
@@ -287,10 +284,6 @@ export class QmlPreviewClient
     }
   }
 
-  /**
-   * Clean up resources
-   * Dispose of all event emitters
-   */
   dispose() {
     logger.info('Disposing QmlPreviewClient');
     this._pathRequested.dispose();

@@ -3,30 +3,24 @@
 
 import * as vscode from 'vscode';
 
-import { createLogger, telemetry } from 'qt-lib';
+import { createLogger, delay, telemetry } from 'qt-lib';
 import { EXTENSION_ID } from '@/constants.js';
-import {
-  launchQmlPreview,
-  attachQmlPreview,
-  disposeSession,
-  QmlPreviewSession
-} from '@preview/qml-preview-service.mjs';
+import { projectManager } from '@/extension.mjs';
+import { QmlPreviewConnectionManager } from '@preview/qml-preview-connection-manager.mjs';
 import { FpsInfo } from '@preview/qml-preview-client.mjs';
+import { Server, ServerScheme } from '@debug/debug-connection.mjs';
 import { QmlPreviewUI } from '@preview/ui.js';
+import getPort from 'get-port';
+import { QtProcess, spawnProcessForTool } from '@/utils.mts';
 
-let currentSession: QmlPreviewSession | undefined;
+let previewManager: QmlPreviewConnectionManager | undefined;
+let previewProcess: QtProcess | undefined;
 
 const logger = createLogger('qml-preview');
 const ui = new QmlPreviewUI();
 
-function cleanupSession() {
-  disposeSession(currentSession);
-  currentSession = undefined;
-  ui.setPreviewStopped();
-}
-
 async function startQmlPreviewImpl(options: { loadCurrentFile: boolean }) {
-  if (currentSession?.manager.isConnected()) {
+  if (previewManager?.isConnected()) {
     ui.showAlreadyRunning();
     return;
   }
@@ -51,32 +45,109 @@ async function startQmlPreviewImpl(options: { loadCurrentFile: boolean }) {
     }
   }
 
-  currentSession = await launchQmlPreview(
-    { qmlFile: currentQmlFile },
-    {
-      onMessage: (msg) => {
-        logger.info(msg);
-      },
-      onError: (err) => {
-        logger.error(err);
-        ui.showFailedToStart(new Error(err));
-      },
-      onConnectionClosed: () => {
-        logger.info('QML Preview connection closed');
-        cleanupSession();
-      },
-      onProcessExit: () => {
-        logger.info('QML Preview process exited');
-        cleanupSession();
-      },
-      onFps: (fps: FpsInfo) => {
-        ui.updateFps(fps);
-      }
-    }
-  );
+  // Obtain a free port
+  const port = await getPort();
 
-  if (currentSession) {
+  if (!port) {
+    ui.showFailedToGetPort();
+    return;
+  }
+  const host = '127.0.0.1';
+  const server: Server = {
+    host: host,
+    port: parseInt(port.toString()),
+    scheme: ServerScheme.Tcp
+  };
+
+  previewManager = new QmlPreviewConnectionManager();
+  previewManager.setupFileWatcher();
+
+  // Configure build directories for QRC file resolution
+  const additionalBuildDirs = vscode.workspace
+    .getConfiguration('qt-qml.preview')
+    .get<string[]>('additionalBuildDirs', []);
+  const projectBuildDirs = projectManager.getBuildDirs();
+  previewManager.buildDirs = [...projectBuildDirs, ...additionalBuildDirs];
+
+  // Handle connection closed (when app exits or user closes preview window)
+  previewManager.onConnectionClosed(() => {
+    logger.info('QML Preview connection closed');
+    // Only dispose if not already disposed by process exit
+    if (previewManager) {
+      previewManager.dispose();
+      previewManager = undefined;
+    }
+    ui.setPreviewStopped();
+    if (previewProcess) {
+      previewProcess.kill();
+      previewProcess = undefined;
+    }
+  });
+
+  // Set up FPS handler to display in status bar
+  previewManager.setFpsHandler((fps: FpsInfo) => {
+    ui.updateFps(fps);
+  });
+
+  // -qmljsdebugger=host:127.0.0.1,port:12150,block,services:QmlPreview,DebugTranslation
+  const ret = await vscode.commands.executeCommand('cmake.launchTargetPath');
+  const program = ret as string;
+  if (!program) {
+    ui.showFailedToGetLaunchTarget();
+    previewManager.dispose();
+    previewManager = undefined;
+    ui.setPreviewStopped();
+    return;
+  }
+
+  const previewArgs = `-qmljsdebugger=host:${server.host},port:${server.port},block,services:QmlPreview,DebugTranslation`;
+  // Don't pass QML file on command line - load it via debug protocol after connection
+  // This prevents the app from briefly showing its default UI before loading the target file
+  const command = `${program} ${previewArgs}`;
+  logger.info('Starting QML Preview with command:', command);
+
+  previewProcess = await spawnProcessForTool(command, []);
+  // Check if the process started successfully
+  if (previewProcess.killed || previewProcess.pid === undefined) {
+    ui.showFailedToStartProcess();
+    previewManager.dispose();
+    previewManager = undefined;
+    ui.setPreviewStopped();
+    return;
+  }
+  logger.info(`QML Preview process started with PID: ${previewProcess.pid}`);
+
+  // Handle process exit (when user closes the preview window or process crashes)
+  previewProcess.on('exit', () => {
+    logger.info('QML Preview process exited');
+    // Only dispose if not already disposed by connection closed
+    if (previewManager) {
+      previewManager.dispose();
+      previewManager = undefined;
+    }
+    ui.setPreviewStopped();
+    previewProcess = undefined;
+  });
+
+  try {
+    previewManager.connectToServer(server);
     ui.setPreviewRunning();
+
+    // Load current QML file if requested
+    if (currentQmlFile) {
+      // Give time for connection to establish
+      await delay(500);
+      logger.info('Loading QML file:', currentQmlFile);
+      previewManager.loadUrl(currentQmlFile);
+    }
+  } catch (error) {
+    ui.showFailedToStart(error);
+    previewManager.dispose();
+    previewManager = undefined;
+    ui.setPreviewStopped();
+    previewProcess.kill();
+    previewProcess = undefined;
+    return;
   }
 }
 
@@ -112,16 +183,40 @@ export function registerAttachQmlPreviewCommand() {
     async () => {
       logger.info('Attaching to QML Preview');
       telemetry.sendAction('attachQmlPreview');
-      if (currentSession?.manager.isConnected()) {
+      if (previewManager?.isConnected()) {
         ui.showAlreadyRunning();
         return;
       }
+
+      const dispose = () => {
+        if (previewManager) {
+          previewManager.dispose();
+          previewManager = undefined;
+        }
+        ui.setPreviewStopped();
+      };
 
       // Ask user for host and port
       const connectionInfo = await ui.promptForConnectionInfo();
       if (!connectionInfo) {
         return;
       }
+
+      const server: Server = {
+        host: connectionInfo.host,
+        port: connectionInfo.port,
+        scheme: ServerScheme.Tcp
+      };
+
+      previewManager = new QmlPreviewConnectionManager();
+      previewManager.setupFileWatcher();
+
+      // Configure build directories for QRC file resolution
+      const additionalBuildDirs = vscode.workspace
+        .getConfiguration('qt-qml.preview')
+        .get<string[]>('additionalBuildDirs', []);
+      const projectBuildDirs = projectManager.getBuildDirs();
+      previewManager.buildDirs = [...projectBuildDirs, ...additionalBuildDirs];
 
       // Show waiting notification with cancel callback
       void ui.showWaitingForConnection(
@@ -130,49 +225,49 @@ export function registerAttachQmlPreviewCommand() {
         () => {
           // User clicked cancel
           logger.info('User canceled connection attempt');
-          currentSession?.manager.cancelConnection();
-          cleanupSession();
+          if (previewManager) {
+            previewManager.cancelConnection();
+          }
+          dispose();
         }
       );
 
-      currentSession = attachQmlPreview(
-        {
-          host: connectionInfo.host,
-          port: connectionInfo.port
-        },
-        {
-          onMessage: (msg) => {
-            logger.info(msg);
-          },
-          onError: (err) => {
-            logger.error(err);
-          },
-          onConnectionClosed: () => {
-            logger.info('QML Preview connection closed in attach mode');
-            cleanupSession();
-          },
-          onConnectionOpened: () => {
-            logger.info('QML Preview connection opened');
-            ui.setPreviewRunning();
-            ui.showAttachSuccess(connectionInfo.host, connectionInfo.port);
-          },
-          onConnectionFailed: () => {
-            logger.info('QML Preview connection failed');
-            ui.showFailedToAttach(new Error('Connection failed'));
-            cleanupSession();
-          },
-          onDebugServiceUnavailable: () => {
-            logger.info('QML Preview debug service unavailable in attach mode');
-            cleanupSession();
-          },
-          onFps: (fps: FpsInfo) => {
-            // eslint-disable-next-line no-console
-            console.log(
-              `QML Preview: ${fps.numSyncs} fps (${fps.minSync}ms-${fps.maxSync}ms)`
-            );
-          }
-        }
-      );
+      // Handle connection closed (when app exits)
+      previewManager.onConnectionClosed(() => {
+        logger.info('QML Preview connection closed in attach mode');
+        dispose();
+      });
+
+      // Handle debug service unavailable - stop immediately in attach mode
+      previewManager.onDebugServiceUnavailable(() => {
+        logger.info('QML Preview debug service unavailable in attach mode');
+        dispose();
+      });
+
+      // Handle connection opened
+      previewManager.onConnectionOpened(() => {
+        logger.info('QML Preview connection opened');
+        ui.setPreviewRunning();
+        ui.showAttachSuccess(connectionInfo.host, connectionInfo.port);
+      });
+
+      // Handle connection failed
+      previewManager.onConnectionFailed(() => {
+        logger.info('QML Preview connection failed');
+        ui.showFailedToAttach(new Error('Connection failed'));
+        dispose();
+      });
+
+      // Set up FPS handler (log only)
+      previewManager.setFpsHandler((fps: FpsInfo) => {
+        // eslint-disable-next-line no-console
+        console.log(
+          `QML Preview: ${fps.numSyncs} fps (${fps.minSync}ms-${fps.maxSync}ms)`
+        );
+      });
+
+      // Initiate connection (events will handle success/failure)
+      previewManager.connectToServer(server);
     }
   );
 }
@@ -183,18 +278,23 @@ export function registerStopQmlPreviewCommand() {
     () => {
       telemetry.sendAction('stopQmlPreview');
 
-      if (!currentSession) {
+      if (!previewManager) {
         ui.showNotRunning();
         return;
       }
 
-      if (currentSession.process) {
+      previewManager.dispose();
+      previewManager = undefined;
+
+      if (previewProcess) {
         logger.info(
-          `Killing QML Preview process with PID: ${currentSession.process.pid}`
+          `Killing QML Preview process with PID: ${previewProcess.pid}`
         );
+        previewProcess.kill();
+        previewProcess = undefined;
       }
 
-      cleanupSession();
+      ui.setPreviewStopped();
     }
   );
 }
@@ -205,12 +305,12 @@ export function registerReloadQmlPreviewCommand() {
     () => {
       telemetry.sendAction('reloadQmlPreview');
 
-      if (!currentSession?.manager.isConnected()) {
+      if (!previewManager || !previewManager.isConnected()) {
         ui.showNotConnected();
         return;
       }
 
-      currentSession.manager.rerun();
+      previewManager.rerun();
       ui.showReloaded();
     }
   );
@@ -222,7 +322,7 @@ export function registerSetQmlPreviewZoomCommand() {
     async () => {
       telemetry.sendAction('setQmlPreviewZoom');
 
-      if (!currentSession?.manager.isConnected()) {
+      if (!previewManager || !previewManager.isConnected()) {
         ui.showNotConnected();
         return;
       }
@@ -232,7 +332,7 @@ export function registerSetQmlPreviewZoomCommand() {
         return;
       }
 
-      currentSession.manager.zoom(zoom);
+      previewManager.zoom(zoom);
       ui.showZoomSet(zoom);
     }
   );
@@ -244,17 +344,21 @@ export function registerClearQmlPreviewCacheCommand() {
     () => {
       telemetry.sendAction('clearQmlPreviewCache');
 
-      if (!currentSession?.manager.isConnected()) {
+      if (!previewManager || !previewManager.isConnected()) {
         ui.showNotConnected();
         return;
       }
 
-      currentSession.manager.clearCache();
+      previewManager.clearCache();
       ui.showCacheCleared();
     }
   );
 }
 
 export function disposePreviewManager() {
-  cleanupSession();
+  if (previewManager) {
+    previewManager.dispose();
+    previewManager = undefined;
+  }
+  ui.setPreviewStopped();
 }

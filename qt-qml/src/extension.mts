@@ -35,14 +35,16 @@ import {
   registerSetQmlPreviewZoomCommand,
   registerClearQmlPreviewCacheCommand,
   disposePreviewManager
-} from '@cmd/qml-preview.mjs';
+} from '@/preview/qml-preview.mjs';
 import {
   acquirePortTaskProvider,
   AcquirePortTaskProvider
 } from './tasks/acquire-port.mjs';
 import {
-  qmlPreviewTaskProvider,
-  QmlPreviewTaskProvider
+  qmlPreviewLaunchTaskProvider,
+  QmlPreviewLaunchTaskProvider,
+  qmlPreviewAttachTaskProvider,
+  QmlPreviewAttachTaskProvider
 } from './tasks/qml-preview-task.mjs';
 
 export let projectManager: QMLProjectManager;
@@ -100,8 +102,12 @@ export async function activate(context: vscode.ExtensionContext) {
       acquirePortTaskProvider
     ),
     vscode.tasks.registerTaskProvider(
-      QmlPreviewTaskProvider.type,
-      qmlPreviewTaskProvider
+      QmlPreviewLaunchTaskProvider.type,
+      qmlPreviewLaunchTaskProvider
+    ),
+    vscode.tasks.registerTaskProvider(
+      QmlPreviewAttachTaskProvider.type,
+      qmlPreviewAttachTaskProvider
     )
   );
   telemetry.sendEvent(`activated`);
