@@ -45,7 +45,7 @@ import {
   QmlPreviewLaunchTaskProvider,
   qmlPreviewAttachTaskProvider,
   QmlPreviewAttachTaskProvider
-} from './tasks/qml-preview-task.mjs';
+} from './preview/qml-preview-task.mts';
 
 export let projectManager: QMLProjectManager;
 export let coreAPI: CoreAPI | undefined;
