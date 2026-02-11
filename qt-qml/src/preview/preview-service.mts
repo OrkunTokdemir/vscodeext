@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import getPort from 'get-port';
 
-import { createLogger, delay } from 'qt-lib';
+import { createLogger } from 'qt-lib';
 import { projectManager } from '@/extension.mjs';
 import { QmlPreviewConnectionManager } from '@/preview/preview-connection-manager.mjs';
 import { FpsInfo } from '@/preview/preview-client.mjs';
@@ -179,13 +179,43 @@ export async function launchQmlPreview(
       callbacks?.onProcessExit?.(code, signal);
     });
 
+    // Helper to create a promise that resolves when connection is established
+    const createConnectionReadyPromise = async (
+      mgr: QmlPreviewConnectionManager
+    ) =>
+      new Promise<void>((resolve) => {
+        const disposable = mgr.onConnectionOpened(() => {
+          disposable.dispose();
+          resolve();
+        });
+      });
+
+    // Helper to create a timeout promise
+    const createTimeoutPromise = async (seconds: number) =>
+      new Promise<void>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new Error(`QML Preview connection timeout after ${seconds} seconds`)
+          );
+        }, seconds * 1000);
+      });
+
+    const connectionReady = createConnectionReadyPromise(manager);
+    const timeout = createTimeoutPromise(10);
+
     manager.connectToServer(server);
     log('QML Preview connected successfully');
 
     if (options.qmlFile) {
-      await delay(500);
-      log(`Loading QML file: ${options.qmlFile}`);
-      manager.loadUrl(options.qmlFile);
+      // Wait for the connection to be fully established before loading the file
+      log('Waiting for QML Preview connection to be ready...');
+      try {
+        await Promise.race([connectionReady, timeout]);
+        log(`Loading QML file: ${options.qmlFile}`);
+        manager.loadUrl(options.qmlFile);
+      } catch (err) {
+        error(`Timeout waiting for connection: ${String(err)}`);
+      }
     }
 
     return { manager, process, server };
