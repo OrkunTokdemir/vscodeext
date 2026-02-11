@@ -32,7 +32,7 @@ import {
   registerSetQmlPreviewZoomCommand,
   registerClearQmlPreviewCacheCommand,
   disposePreviewManager
-} from '@/preview/qml-preview.mjs';
+} from '@/preview/preview.mjs';
 import {
   acquirePortTaskProvider,
   AcquirePortTaskProvider
@@ -42,7 +42,7 @@ import {
   QmlPreviewLaunchTaskProvider,
   qmlPreviewAttachTaskProvider,
   QmlPreviewAttachTaskProvider
-} from './preview/qml-preview-task.mts';
+} from './preview/preview-task.mts';
 
 export let projectManager: QMLProjectManager;
 export let coreAPI: CoreAPI | undefined;

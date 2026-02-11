@@ -11,8 +11,8 @@ import {
   disposeCurrentSession,
   getCurrentSession,
   setCurrentSession
-} from '@preview/qml-preview-service.mjs';
-import { FpsInfo } from '@preview/qml-preview-client.mjs';
+} from '@/preview/preview-service.mjs';
+import { FpsInfo } from '@/preview/preview-client.mjs';
 import { QmlPreviewUI } from '@preview/ui.js';
 
 const logger = createLogger('qml-preview');

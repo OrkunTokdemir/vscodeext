@@ -11,7 +11,7 @@ import {
   QmlPreviewSession,
   QmlPreviewLaunchOptions,
   QmlPreviewAttachOptions
-} from '@preview/qml-preview-service.mjs';
+} from '@/preview/preview-service.mjs';
 import { QmlPreviewUI } from '@preview/ui.js';
 
 /**

@@ -6,8 +6,8 @@ import getPort from 'get-port';
 
 import { createLogger, delay } from 'qt-lib';
 import { projectManager } from '@/extension.mjs';
-import { QmlPreviewConnectionManager } from '@preview/qml-preview-connection-manager.mjs';
-import { FpsInfo } from '@preview/qml-preview-client.mjs';
+import { QmlPreviewConnectionManager } from '@/preview/preview-connection-manager.mjs';
+import { FpsInfo } from '@/preview/preview-client.mjs';
 import { Server, ServerScheme } from '@debug/debug-connection.mjs';
 import { QtProcess, spawnProcessForTool } from '@/utils.mts';
 

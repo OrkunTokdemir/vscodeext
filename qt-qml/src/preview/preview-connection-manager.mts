@@ -8,8 +8,8 @@ import {
   QmlDebugConnection,
   QmlDebugConnectionManager
 } from '@debug/debug-connection.mjs';
-import { QmlPreviewClient, FpsInfo } from './qml-preview-client.mjs';
-import { QrcResourceFinder } from './qrc-resource-finder.mjs';
+import { QmlPreviewClient, FpsInfo } from './preview-client.mts';
+import { QrcResourceFinder } from './qrc-resource-finder.mts';
 import { createLogger, delay, IsWindows } from 'qt-lib';
 
 const logger = createLogger('qml-preview-manager');
