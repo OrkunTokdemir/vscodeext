@@ -174,8 +174,6 @@ export async function launchQmlPreview(
       });
     }
 
-    qmlPreviewOutputChannel.show(true);
-
     process.on('exit', (code, signal) => {
       log(`QML Preview process exited with code ${code}, signal ${signal}`);
       callbacks?.onProcessExit?.(code, signal);
@@ -242,8 +240,6 @@ export function disposeSession(session: QmlPreviewSession | undefined) {
   }
   session.manager.dispose();
   session.process?.kill();
-  qmlPreviewOutputChannel?.dispose();
-  qmlPreviewOutputChannel = undefined;
 }
 
 // Shared session management for both command-based and task-based preview
