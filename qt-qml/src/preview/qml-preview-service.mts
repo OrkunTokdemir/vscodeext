@@ -13,6 +13,8 @@ import { QtProcess, spawnProcessForTool } from '@/utils.mts';
 
 const logger = createLogger('qml-preview-service');
 
+let qmlPreviewOutputChannel: vscode.OutputChannel | undefined;
+
 export interface QmlPreviewLaunchOptions {
   program?: string | undefined;
   qmlFile?: string | undefined;
@@ -153,6 +155,27 @@ export async function launchQmlPreview(
     }
     log(`QML Preview process started with PID: ${process.pid}`);
 
+    if (!qmlPreviewOutputChannel) {
+      qmlPreviewOutputChannel =
+        vscode.window.createOutputChannel('QML Preview Output');
+    }
+
+    if (process.stdout) {
+      process.stdout.on('data', (data: Buffer) => {
+        const output = data.toString();
+        qmlPreviewOutputChannel?.append(output);
+      });
+    }
+
+    if (process.stderr) {
+      process.stderr.on('data', (data: Buffer) => {
+        const output = data.toString();
+        qmlPreviewOutputChannel?.append(output);
+      });
+    }
+
+    qmlPreviewOutputChannel.show(true);
+
     process.on('exit', (code, signal) => {
       log(`QML Preview process exited with code ${code}, signal ${signal}`);
       callbacks?.onProcessExit?.(code, signal);
@@ -219,6 +242,8 @@ export function disposeSession(session: QmlPreviewSession | undefined) {
   }
   session.manager.dispose();
   session.process?.kill();
+  qmlPreviewOutputChannel?.dispose();
+  qmlPreviewOutputChannel = undefined;
 }
 
 // Shared session management for both command-based and task-based preview
