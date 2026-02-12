@@ -28,7 +28,7 @@
       "@task/*": ["./src/tasks/*"],
       "@util/*": ["./src/util/*"],
       "@debug/*": ["./src/debug/*"],
-      "@preview/*": ["./src/preview/*"],
+      "@preview/*": ["./src/preview/*"]
     }
   },
   "include": ["src/**/*", "test/**/*"]
