@@ -314,6 +314,7 @@ async function updateConfigs() {
 
   data.configs = {
     filePath: _.get(r, 'filePath', data.configs.filePath),
+    fileName: _.get(r, 'fileName', data.configs.fileName),
     additionalDirs: _.get(r, 'additionalDirs', data.configs.additionalDirs)
   }
 }

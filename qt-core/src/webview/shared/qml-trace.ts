@@ -4,7 +4,7 @@
 export type FlameGraphKind = 'time' | 'memory' | 'allocations';
 
 export type QmlTraceCommandReply =
-  | { filePath: string; additionalDirs: string[] }
+  | { fileName: string; filePath: string; additionalDirs: string[] }
   | { folders: string[] }
   | { themeKind: string }
   | { status: 'done' };

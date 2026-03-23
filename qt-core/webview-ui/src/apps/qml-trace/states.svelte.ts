@@ -19,6 +19,7 @@ import type {
 export const data = $state({
   flame: undefined as (FlameGraph | undefined),
   configs: {
+    fileName: '',
     filePath: "",
     additionalDirs: [] as string[]
   }

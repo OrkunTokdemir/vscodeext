@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import _ from 'lodash';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { createLogger, exists, FileFinder } from 'qt-lib';
@@ -137,6 +138,7 @@ export class QmlTraceController {
   private readonly _onGetConfigs = (cmd: Command) => {
     this._postReply(cmd, {
       filePath: this._doc.uri.fsPath,
+      fileName: path.basename(this._doc.uri.fsPath),
       additionalDirs: this._doc.additionalDirs
     });
   };
