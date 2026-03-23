@@ -14,15 +14,23 @@ import {
 } from '@/webview/shared/message';
 import { QmlTraceCommandReply } from '@/webview/shared/qml-trace';
 import { QmlTraceDoc } from './doc';
+import { QmlTraceViewerRunner } from './viewer';
 import { QtcliRestClient } from '@/qtcli/rest';
 
 const logger = createLogger('qml-trace-controller');
+
+interface SourceLocation {
+  filePath: string,
+  line?: number,
+  column?: number
+};
 
 export class QmlTraceController {
   private readonly _context: vscode.ExtensionContext;
   private readonly _doc: QmlTraceDoc;
   private readonly _comm: WebviewChannel;
   private readonly _qtcli: QtcliRestClient;
+  private readonly _viewer: QmlTraceViewerRunner;
   private readonly _routes: Map<CommandId, CommandHandler>;
   private readonly _disposables: vscode.Disposable[] = [];
 
@@ -36,6 +44,20 @@ export class QmlTraceController {
     this._doc = doc;
     this._comm = new WebviewChannel(view);
     this._qtcli = new QtcliRestClient(qtcliSocketName);
+
+    this._viewer = new QmlTraceViewerRunner(doc);
+    this._viewer.onStderr((l) => { logger.info(' ' + l); });
+    this._viewer.onStdout((l) => {
+      logger.info(' ' + l);
+
+      if (l.startsWith("qrc:/")) {
+        const loc = parseSourceLocation(l);
+        const dirs = this._doc.additionalDirs;
+        if (loc && dirs.length !== 0) {
+          void openSourceFile(loc, dirs);
+        }
+      }
+    });
 
     this._disposables.push(
       this._comm,
@@ -52,6 +74,7 @@ export class QmlTraceController {
       [CommandId.QmlTraceGetFlameGraph, this._onGetFlameGraph],
       [CommandId.QmlTraceOpenSourceFile, this._onOpenSourceFile],
       [CommandId.QmlTraceOpenFileInTextEditor, this._onOpenFileInTextEditor],
+      [CommandId.QmlTraceOpenFileInTraceViewer, this._onOpenFileInTraceViewer],
       [CommandId.QmlTraceOpenFlameGraphData, this._onOpenFlameGraphData],
       [CommandId.QmlTraceSelectFolder, this._onSelectFolder],
       [CommandId.QmlTraceGetWorkspaceFolders, this._onGetWorkspaceFolders]
@@ -182,6 +205,11 @@ export class QmlTraceController {
     this._postReply(cmd, { status: 'done' });
   };
 
+  private readonly _onOpenFileInTraceViewer = (cmd: Command) => {
+    void this._viewer.run();
+    this._postReply(cmd, { status: 'done' });
+  };
+
   private readonly _onOpenFlameGraphData = async (cmd: Command) => {
     const json = (_.get(cmd.payload, 'json', '') as string).trim();
     if (json.length == 0) {
@@ -255,4 +283,51 @@ export class QmlTraceController {
   private _postReply(cmd: Command, data: QmlTraceCommandReply) {
     this._comm.postDataReply(cmd, data);
   }
+}
+
+
+// helpers
+function parseSourceLocation(l: string): SourceLocation | undefined {
+  // format of the source location:
+  // qrc:/qt/qml/QtCreator/Tracing/FlameGraphView.qml
+  // qrc:/qt/qml/QtCreator/Tracing/FlameGraphView.qml:115
+  // qrc:/qt/qml/QtCreator/Tracing/FlameGraphView.qml:115:13
+
+  const loc = l.trim()
+  const match = loc.match(/^(qrc:\/[a-zA-Z0-9/._-]+)(?::(\d+))?(?::(\d+))?$/);
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    filePath: match[1] ?? '',
+    ...(match[2] !== undefined && { line: parseInt(match[2], 10) }),
+    ...(match[3] !== undefined && { column: parseInt(match[3], 10) }),
+  };
+}
+
+async function openSourceFile(loc: SourceLocation, dirs: string[]) {
+  const finder = new FileFinder();
+  finder.buildDirs = dirs;
+
+  const physicalpath = await finder.findFile(loc.filePath);
+  if (!physicalpath) {
+    logger.error('Cannot find a QML file for:', loc.filePath);
+    return;
+  }
+
+  const uri = vscode.Uri.file(physicalpath);
+  if (!(await exists(uri.fsPath))) {
+    logger.error('Cannot locate the QML file:', uri.fsPath);
+    return;
+  }
+
+  const position = new vscode.Position(loc.line ?? 0, loc.column ?? 0);
+  const selection = new vscode.Range(position, position);
+
+  void vscode.window.showTextDocument(uri, {
+    viewColumn: vscode.ViewColumn.Two,
+    selection,
+    preview: true
+  });
 }

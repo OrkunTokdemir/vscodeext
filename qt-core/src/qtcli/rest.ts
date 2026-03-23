@@ -13,7 +13,7 @@ import { isErrorResponse, Issue } from '@/webview/shared/message';
 
 const logger = createLogger('qtcli');
 
-const heartbeat_client_ms = 15_000;
+// const heartbeat_client_ms = 15_000;
 const heartbeat_server_arg = '15s';
 
 export function generateSocketId(prefix = ''): string {
@@ -39,9 +39,9 @@ export class QtcliRestClient {
           : String.raw`\\.\pipe\qtcli` + `\\${socketName}.pipe`
     });
 
-    this._timerId = setInterval(() => {
-      void this.post('/heartbeat');
-    }, heartbeat_client_ms);
+    // this._timerId = setInterval(() => {
+    //   void this.post('/heartbeat');
+    // }, heartbeat_client_ms);
   }
 
   dispose() {

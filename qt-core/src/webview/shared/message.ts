@@ -37,6 +37,7 @@ export enum CommandId {
   QmlTraceGetFlameGraph,
   QmlTraceOpenSourceFile,
   QmlTraceOpenFileInTextEditor,
+  QmlTraceOpenFileInTraceViewer,
   QmlTraceOpenFlameGraphData,
   QmlTraceSelectFolder,
   QmlTraceGetWorkspaceFolders,

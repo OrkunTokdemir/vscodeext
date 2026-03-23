@@ -89,6 +89,10 @@ export async function openFileInTextEditor() {
   await vscode.post(CommandId.QmlTraceOpenFileInTextEditor);
 }
 
+export async function openFileInTraceViewer() {
+  await vscode.post(CommandId.QmlTraceOpenFileInTraceViewer);
+}
+
 export async function openDataAsJsonc() {
   await vscode.post(CommandId.QmlTraceOpenFlameGraphData, {
     json: JSON.stringify(data.flame, undefined, 2),
