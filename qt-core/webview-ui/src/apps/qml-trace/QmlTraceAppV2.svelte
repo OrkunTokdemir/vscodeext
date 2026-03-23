@@ -39,7 +39,7 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
     }}
   >
     <ExternalLink/>
-    <p>Open in a QML trace viewer</p>
+    <p>Open with QML trace viewer</p>
   </button>
 {/snippet}
 
