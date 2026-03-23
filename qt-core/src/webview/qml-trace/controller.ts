@@ -139,7 +139,8 @@ export class QmlTraceController {
     this._postReply(cmd, {
       filePath: this._doc.uri.fsPath,
       fileName: path.basename(this._doc.uri.fsPath),
-      additionalDirs: this._doc.additionalDirs
+      additionalDirs: this._doc.additionalDirs,
+      viewerPath: 'aaa'
     });
   };
 
@@ -333,3 +334,4 @@ async function openSourceFile(loc: SourceLocation, dirs: string[]) {
     preview: true
   });
 }
+

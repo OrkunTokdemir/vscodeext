@@ -128,6 +128,19 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
         bind:value={text}
         class="w-full qt-input min-w-[500px] min-h-[150px] resize"
       ></textarea>
+
+      <div class="w-full flex flex-row gap-1.5 items-center mb-1.5 ">
+        <div class="grow flex flex-col">
+          <div class="qt-label m-0!">QML trace viewer (global)</div>
+          <div class="qt-label m-0! dimmed font-light">
+            /Users/bencho/Downloads/qmltraceviewer
+          </div>
+        </div>
+        <IconButton
+          flat class=''
+          text='Open Qt settings'
+        />
+      </div>
     </div>
 
     <!-- bottom buttons -->

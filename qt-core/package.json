@@ -309,6 +309,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show welcome page when the extension gets activated",
+        },
+        "qt-core.customQmlTrcaeViewerExePath": {
+          "type": "string",
+          "default": "",
+          "description": "Specify the custom QML trace viewer executable path",
           "scope": "machine-overridable"
         }
       }
