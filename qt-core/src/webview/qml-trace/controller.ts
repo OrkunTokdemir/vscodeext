@@ -15,8 +15,9 @@ import {
 } from '@/webview/shared/message';
 import { QmlTraceCommandReply } from '@/webview/shared/qml-trace';
 import { QmlTraceDoc } from './doc';
-import { QmlTraceViewerRunner } from './viewer';
+import { QmlTraceViewerRunner, getCustomQmlTraceViewerExePath } from './viewer';
 import { QtcliRestClient } from '@/qtcli/rest';
+import { fsFile } from '@/fs-utils';
 
 const logger = createLogger('qml-trace-controller');
 
@@ -68,14 +69,15 @@ export class QmlTraceController {
     );
 
     this._routes = new Map<CommandId, CommandHandler>([
+      [CommandId.QmlTraceV2GetConfigs, this._onV2GetConfigs],
+      [CommandId.QmlTraceV2OpenFileInTextEditor, this._onV2OpenFileInTextEditor],
+      [CommandId.QmlTraceV2OpenFileInTraceViewer, this._onV2OpenFileInTraceViewer],
+
       [CommandId.UiCheckIfQtcliReady, this._onCheckIfQtcliReady],
       [CommandId.QmlTraceLoadFile, this._onLoadFile],
-      [CommandId.QmlTraceGetConfigs, this._onGetConfigs],
       [CommandId.QmlTraceSetConfigs, this._onSetConfigs],
       [CommandId.QmlTraceGetFlameGraph, this._onGetFlameGraph],
       [CommandId.QmlTraceOpenSourceFile, this._onOpenSourceFile],
-      [CommandId.QmlTraceOpenFileInTextEditor, this._onOpenFileInTextEditor],
-      [CommandId.QmlTraceOpenFileInTraceViewer, this._onOpenFileInTraceViewer],
       [CommandId.QmlTraceOpenFlameGraphData, this._onOpenFlameGraphData],
       [CommandId.QmlTraceSelectFolder, this._onSelectFolder],
       [CommandId.QmlTraceGetWorkspaceFolders, this._onGetWorkspaceFolders]
@@ -127,21 +129,36 @@ export class QmlTraceController {
     }
   };
 
+  private readonly _onV2GetConfigs = (cmd: Command) => {
+    const viewer = getCustomQmlTraceViewerExePath();
+
+    this._postReply(cmd, {
+      filePath: this._doc.uri.fsPath,
+      fileName: path.basename(this._doc.uri.fsPath),
+      additionalDirs: this._doc.additionalDirs,
+      viewer: {
+        path: viewer,
+        valid: fsFile(viewer).exists()
+      }
+    });
+  };
+
+  private readonly _onV2OpenFileInTextEditor = (cmd: Command) => {
+    void vscode.window.showTextDocument(this._doc.uri);
+    this._postReply(cmd, { status: 'done' });
+  };
+
+  private readonly _onV2OpenFileInTraceViewer = async (cmd: Command) => {
+    await this._viewer.run();
+    this._postReply(cmd, { status: 'done' });
+  };
+
   private readonly _onLoadFile = async (cmd: Command) => {
     const data = await this._qtcli.put('/qmltraces/load', {
       filePath: this._doc.uri.fsPath
     });
 
     this._comm.postDataReply(cmd, data);
-  };
-
-  private readonly _onGetConfigs = (cmd: Command) => {
-    this._postReply(cmd, {
-      filePath: this._doc.uri.fsPath,
-      fileName: path.basename(this._doc.uri.fsPath),
-      additionalDirs: this._doc.additionalDirs,
-      viewerPath: 'aaa'
-    });
   };
 
   private readonly _onSetConfigs = (cmd: Command) => {
@@ -201,16 +218,6 @@ export class QmlTraceController {
       selection,
       preview: true
     });
-  };
-
-  private readonly _onOpenFileInTextEditor = (cmd: Command) => {
-    void vscode.window.showTextDocument(this._doc.uri);
-    this._postReply(cmd, { status: 'done' });
-  };
-
-  private readonly _onOpenFileInTraceViewer = (cmd: Command) => {
-    void this._viewer.run();
-    this._postReply(cmd, { status: 'done' });
   };
 
   private readonly _onOpenFlameGraphData = async (cmd: Command) => {
@@ -290,6 +297,8 @@ export class QmlTraceController {
 
 
 // helpers
+
+// -----------
 function parseSourceLocation(l: string): SourceLocation | undefined {
   // format of the source location:
   // qrc:/qt/qml/QtCreator/Tracing/FlameGraphView.qml

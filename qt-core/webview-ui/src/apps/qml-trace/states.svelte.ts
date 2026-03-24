@@ -21,7 +21,11 @@ export const data = $state({
   configs: {
     fileName: '',
     filePath: "",
-    additionalDirs: [] as string[]
+    additionalDirs: [] as string[],
+    viewer: {
+      path: '',
+      valid: false
+    }
   }
 })
 

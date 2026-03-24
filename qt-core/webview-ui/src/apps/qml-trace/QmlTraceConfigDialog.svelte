@@ -9,10 +9,15 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
     X,
     FolderPlus,
     PackagePlus,
-    BrushCleaning
+    BrushCleaning,
+    // Info,
+    // Settings,
    } from "@lucide/svelte";
 
+  import Row from '@/comps/Row.svelte';
+  import Column from '@/comps/Column.svelte';
   import IconButton from "@/comps/IconButton.svelte";
+  // import InputWithIssue from "@/comps/InputWithIssue.svelte";
   import { qmltrace as texts } from '@/apps/texts';
   import { data, ui } from './states.svelte';
   import * as viewlogic from './viewlogic.svelte';
@@ -79,7 +84,18 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 </script>
 
 <div class="fixed inset-0 flex items-center justify-center">
-  <!-- backdrop -->
+  {@render Backdrop()}
+
+  <Column class='qt-popup absolute p-3 gap-4 select-none'>
+    {@render Title()}
+    {@render QmlLookupDirs()}
+    <!-- {@render QmlTraceViewer()} -->
+    {@render Footer()}
+  </Column>
+</div>
+
+<!-- snippets -->
+{#snippet Backdrop()}
   <div
     class="w-full h-full"
     tabindex="0"
@@ -91,66 +107,90 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
       }
     }}
   ></div>
+{/snippet}
 
-  <!-- contents -->
-  <div class='qt-popup absolute flex flex-col p-2 select-none'>
-    <!-- title -->
-    <div class='w-full flex flex-row'>
-      <p class="qt-label grow">{t.title}</p>
-      <IconButton
-        class='w-1 border-none!'
-        flat square
-        icon={X}
-        onClicked={reject}
-      />
-    </div>
+{#snippet Title()}
+  <Row class='w-full items-center'>
+    <div class="qt-label grow">{t.title}</div>
+    <IconButton
+      class='w-1 border-none!'
+      flat square
+      icon={X}
+      onClicked={reject}
+    />
+  </Row>
+{/snippet}
 
-    <div class="m-1">
-      <!-- look up directories -->
-      <div class="w-full flex flex-row gap-1.5 items-center mb-1.5">
-        <div class="grow flex flex-col">
-          <div class="qt-label m-0!">{t.qmlDirsLabel}</div>
-          <div class="qt-label m-0! dimmed font-light">{t.qmlDirsLabelHelp}</div>
-        </div>
+{#snippet Footer()}
+  <Row>
+    <div class="grow"></div>
+    <IconButton
+      text={t.saveButton}
+      onClicked={accept}
+    />
+  </Row>
+{/snippet}
 
-        {#each buttons as b (b.id)}
-          <IconButton
-            flat square class='w-1'
-            icon={b.icon}
-            tooltip={b.tooltip}
-            tooltipPlacement="top-end"
-            onClicked={() => { onIconClicked(b.id); }}
-          />
-        {/each}
-      </div>
-      <textarea
-        bind:this={textArea}
-        bind:value={text}
-        class="w-full qt-input min-w-[500px] min-h-[150px] resize"
-      ></textarea>
+{#snippet QmlLookupDirs()}
+  <Column>
+    <Row class="w-full items-center">
+      <Column class="grow !-space-y-2">
+        {@render ItemLabel(t.qmlDirsLabel)}
+        {@render ItemLabelDimmed(t.qmlDirsLabelHelp)}
+      </Column>
 
-      <div class="w-full flex flex-row gap-1.5 items-center mb-1.5 ">
-        <div class="grow flex flex-col">
-          <div class="qt-label m-0!">QML trace viewer (global)</div>
-          <div class="qt-label m-0! dimmed font-light">
-            /Users/bencho/Downloads/qmltraceviewer
-          </div>
-        </div>
+      {#each buttons as b (b.id)}
         <IconButton
-          flat class=''
-          text='Open Qt settings'
+          flat square
+          class='w-1'
+          icon={b.icon}
+          tooltip={b.tooltip}
+          tooltipPlacement="top-end"
+          onClicked={() => {
+            onIconClicked(b.id);
+          }}
+        />
+      {/each}
+    </Row>
+    <textarea
+      bind:this={textArea}
+      bind:value={text}
+      class="w-full qt-input min-w-[500px] min-h-[150px] resize"
+    ></textarea>
+  </Column>
+{/snippet}
+<!--
+{#snippet QmlTraceViewer()}
+  <Column class='!-space-y-2'>
+    <Row class='items-center '>
+      {@render ItemLabel('QML trace viewer (global)')}
+      {#if data.configs.viewer.valid}
+        <Info class='text-orange-500'/>
+      {/if}
+    </Row>
+
+    <Row class='items-center'>
+      <div class='grow'>
+        <InputWithIssue
+          disabled
+          bind:value={data.configs.viewer.path}
+          class='grow'
         />
       </div>
-    </div>
-
-    <!-- bottom buttons -->
-    <div class="flex flex-row gap-2">
-      <div class="grow"></div>
       <IconButton
-        text={t.saveButton}
-        onClicked={accept}
+        flat
+        square
+        class='w-1'
+        icon={Settings}
       />
-    </div>
+    </Row>
+  </Column>
+{/snippet} -->
 
-  </div>
-</div>
+{#snippet ItemLabel(text: string)}
+  <div class="qt-label">{text}</div>
+{/snippet}
+
+{#snippet ItemLabelDimmed(text: string)}
+  <div class="qt-label dimmed font-light">{text}</div>
+{/snippet}

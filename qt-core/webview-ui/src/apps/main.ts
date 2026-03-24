@@ -6,7 +6,7 @@ import { mount } from 'svelte';
 import Welcome from './welcome/WelcomeApp.svelte';
 import Courses from './courses/CoursesApp.svelte';
 import NewItem from './new-item/NewItemApp.svelte';
-import QmlTraceV2 from './qml-trace/QmlTraceAppV2.svelte';
+import QmlTraceV2 from './qml-trace/QmlTraceV2App.svelte';
 import QrcEditor from './qrc-editor/QrcEditorApp.svelte';
 import ExBrowser from './ex-browser/ExBrowserApp.svelte';
 

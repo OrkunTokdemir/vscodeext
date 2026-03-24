@@ -7,7 +7,7 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
   import { onMount } from 'svelte';
 
   import '@/styles/app.css';
-  import { ExternalLink, Info, Settings } from '@lucide/svelte';
+  import { ExternalLink, Settings } from '@lucide/svelte';
   import IconButton from '@/comps/IconButton.svelte';
   import QmlTraceConfigDialog from './QmlTraceConfigDialog.svelte';
   import { data, ui } from './states.svelte';
@@ -60,7 +60,7 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
     {/if}
 
     <div class='grow'></div>
-    {@render WarningViewer()}
+    <!-- {@render WarningViewer()} -->
     <IconButton
       flat square
       class="!w-0 !border-none"
@@ -82,7 +82,7 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
     Open as text
   </button>
 {/snippet}
-
+<!--
 {#snippet WarningViewer()}
   <IconButton
     flat square
@@ -90,4 +90,4 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
     class="!w-0 !border-none"
     iconClass='text-orange-500'
   />
-{/snippet}
+{/snippet} -->

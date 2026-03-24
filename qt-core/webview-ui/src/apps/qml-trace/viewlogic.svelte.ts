@@ -86,11 +86,11 @@ export async function openSourceLocation(sourceLocation: string) {
 }
 
 export async function openFileInTextEditor() {
-  await vscode.post(CommandId.QmlTraceOpenFileInTextEditor);
+  await vscode.post(CommandId.QmlTraceV2OpenFileInTextEditor);
 }
 
 export async function openFileInTraceViewer() {
-  await vscode.post(CommandId.QmlTraceOpenFileInTraceViewer);
+  await vscode.post(CommandId.QmlTraceV2OpenFileInTraceViewer);
 }
 
 export async function openDataAsJsonc() {
@@ -310,12 +310,16 @@ function updateColorPalette() {
 }
 
 async function updateConfigs() {
-  const r = await vscode.post(CommandId.QmlTraceGetConfigs);
+  const r = await vscode.post(CommandId.QmlTraceV2GetConfigs);
 
   data.configs = {
     filePath: _.get(r, 'filePath', data.configs.filePath),
     fileName: _.get(r, 'fileName', data.configs.fileName),
-    additionalDirs: _.get(r, 'additionalDirs', data.configs.additionalDirs)
+    additionalDirs: _.get(r, 'additionalDirs', data.configs.additionalDirs),
+    viewer: {
+      path: _.get(r, 'viewer.path', data.configs.viewer.path),
+      valid: _.get(r, 'viewer.valid', data.configs.viewer.valid),
+    }
   }
 }
 

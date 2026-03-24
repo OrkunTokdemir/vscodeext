@@ -1,13 +1,13 @@
 
 
+import * as vscode from 'vscode';
 import * as childProcess from 'child_process';
 
 import { createLogger, IsWindows } from 'qt-lib';
 import { QmlTraceDoc } from './doc';
+import { fsFile } from '@/fs-utils';
 
 const logger = createLogger('runner');
-const VIEWER_EXEC = '/Users/bencho/Downloads/QtCreator.app/Contents/Resources/libexec/qmltraceviewer';
-
 
 export class QmlTraceViewerRunner {
   private _onStdout: ((line: string) => void) | undefined;
@@ -33,7 +33,12 @@ export class QmlTraceViewerRunner {
 
     const uri = this._doc.uri;
     const shell = resolveShellPath();
-    const commandLine = [VIEWER_EXEC, '-e', '-l', uri.fsPath].join(' ');
+    const exePath = getQmlTraceViewerExePath();
+    const commandLine = [exePath, '-e', '-l', uri.fsPath].join(' ');
+    if (!fsFile(exePath).exists()) {
+      logger.error(`Cannot find qmltraceviewer executable: path = '${exePath}'`);
+      return;
+    }
 
     logger.info('Running command');
     logger.info(`- shell: ${shell}`);
@@ -80,6 +85,21 @@ export class QmlTraceViewerRunner {
     return out;
   }
 }
+
+export function getQmlTraceViewerExePath() {
+  return getCustomQmlTraceViewerExePath();
+  // const VIEWER_EXEC = '/Users/bencho/Downloads/QtCreator.app/Contents/Resources/libexec/qmltraceviewer';
+}
+
+export function getCustomQmlTraceViewerExePath() {
+  const EXTENSION_ID = 'qt-core';
+  const CONF_ITEM_ID = 'customQmlTrcaeViewerExePath';
+
+  return vscode.workspace
+    .getConfiguration(EXTENSION_ID)
+    .get<string>(CONF_ITEM_ID, '');
+}
+
 
 // helpers
 // function parseSourceLocation(l: string): SourceLocation | undefined {
