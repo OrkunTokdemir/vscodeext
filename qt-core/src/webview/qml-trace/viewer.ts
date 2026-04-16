@@ -31,7 +31,7 @@ export class QmlTraceViewerRunner {
     const uri = this._doc.uri;
     const shell = resolveShellPath();
     const exePath = getQmlTraceViewerExePath();
-    const commandLine = [exePath, '-e', '-l', uri.fsPath].join(' ');
+    const commandLine = [exePath, '-e', uri.fsPath].join(' ');
     if (!fsFile(exePath).exists()) {
       logger.error(
         `Cannot find qmltraceviewer executable: path = '${exePath}'`

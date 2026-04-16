@@ -156,8 +156,8 @@ export class QmlTraceController {
     this._postReply(cmd, { status: 'done' });
   };
 
-  private readonly _onV2OpenFileInTraceViewer = async (cmd: Command) => {
-    await this._viewer.run();
+  private readonly _onV2OpenFileInTraceViewer = (cmd: Command) => {
+    void this._viewer.run();
     this._postReply(cmd, { status: 'done' });
   };
 
