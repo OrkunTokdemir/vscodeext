@@ -308,7 +308,7 @@
         "qt-core.showWelcomePageOnActivation": {
           "type": "boolean",
           "default": true,
-          "description": "Show welcome page when the extension gets activated",
+          "description": "Show welcome page when the extension gets activated"
         },
         "qt-core.customQmlTrcaeViewerExePath": {
           "type": "string",
