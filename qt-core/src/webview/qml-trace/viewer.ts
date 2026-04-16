@@ -1,5 +1,3 @@
-
-
 import * as vscode from 'vscode';
 import * as childProcess from 'child_process';
 
@@ -14,8 +12,7 @@ export class QmlTraceViewerRunner {
   private _onStderr: ((line: string) => void) | undefined;
   private _proc: ReturnType<typeof childProcess.spawn> | undefined;
 
-  constructor(private readonly _doc: QmlTraceDoc) {
-  }
+  constructor(private readonly _doc: QmlTraceDoc) {}
 
   public onStdout(f: ((line: string) => void) | undefined) {
     this._onStdout = f;
@@ -36,7 +33,9 @@ export class QmlTraceViewerRunner {
     const exePath = getQmlTraceViewerExePath();
     const commandLine = [exePath, '-e', '-l', uri.fsPath].join(' ');
     if (!fsFile(exePath).exists()) {
-      logger.error(`Cannot find qmltraceviewer executable: path = '${exePath}'`);
+      logger.error(
+        `Cannot find qmltraceviewer executable: path = '${exePath}'`
+      );
       return;
     }
 
@@ -73,7 +72,9 @@ export class QmlTraceViewerRunner {
           }
 
           this._proc = undefined;
-          reject(new Error(`Process exited with code ${code?.toString() ?? ''}`));
+          reject(
+            new Error(`Process exited with code ${code?.toString() ?? ''}`)
+          );
         });
       }
     });
@@ -99,7 +100,6 @@ export function getCustomQmlTraceViewerExePath() {
     .getConfiguration(EXTENSION_ID)
     .get<string>(CONF_ITEM_ID, '');
 }
-
 
 // helpers
 // function parseSourceLocation(l: string): SourceLocation | undefined {

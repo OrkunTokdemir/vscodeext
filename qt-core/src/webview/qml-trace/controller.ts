@@ -22,10 +22,10 @@ import { fsFile } from '@/fs-utils';
 const logger = createLogger('qml-trace-controller');
 
 interface SourceLocation {
-  filePath: string,
-  line?: number,
-  column?: number
-};
+  filePath: string;
+  line?: number;
+  column?: number;
+}
 
 export class QmlTraceController {
   private readonly _context: vscode.ExtensionContext;
@@ -48,11 +48,13 @@ export class QmlTraceController {
     this._qtcli = new QtcliRestClient(qtcliSocketName);
 
     this._viewer = new QmlTraceViewerRunner(doc);
-    this._viewer.onStderr((l) => { logger.info(' ' + l); });
+    this._viewer.onStderr((l) => {
+      logger.info(' ' + l);
+    });
     this._viewer.onStdout((l) => {
       logger.info(' ' + l);
 
-      if (l.startsWith("qrc:/")) {
+      if (l.startsWith('qrc:/')) {
         const loc = parseSourceLocation(l);
         const dirs = this._doc.additionalDirs;
         if (loc && dirs.length !== 0) {
@@ -70,8 +72,14 @@ export class QmlTraceController {
 
     this._routes = new Map<CommandId, CommandHandler>([
       [CommandId.QmlTraceV2GetConfigs, this._onV2GetConfigs],
-      [CommandId.QmlTraceV2OpenFileInTextEditor, this._onV2OpenFileInTextEditor],
-      [CommandId.QmlTraceV2OpenFileInTraceViewer, this._onV2OpenFileInTraceViewer],
+      [
+        CommandId.QmlTraceV2OpenFileInTextEditor,
+        this._onV2OpenFileInTextEditor
+      ],
+      [
+        CommandId.QmlTraceV2OpenFileInTraceViewer,
+        this._onV2OpenFileInTraceViewer
+      ],
 
       [CommandId.UiCheckIfQtcliReady, this._onCheckIfQtcliReady],
       [CommandId.QmlTraceLoadFile, this._onLoadFile],
@@ -295,7 +303,6 @@ export class QmlTraceController {
   }
 }
 
-
 // helpers
 
 // -----------
@@ -305,7 +312,7 @@ function parseSourceLocation(l: string): SourceLocation | undefined {
   // qrc:/qt/qml/QtCreator/Tracing/FlameGraphView.qml:115
   // qrc:/qt/qml/QtCreator/Tracing/FlameGraphView.qml:115:13
 
-  const loc = l.trim()
+  const loc = l.trim();
   const match = loc.match(/^(qrc:\/[a-zA-Z0-9/._-]+)(?::(\d+))?(?::(\d+))?$/);
   if (!match) {
     return undefined;
@@ -314,7 +321,7 @@ function parseSourceLocation(l: string): SourceLocation | undefined {
   return {
     filePath: match[1] ?? '',
     ...(match[2] !== undefined && { line: parseInt(match[2], 10) }),
-    ...(match[3] !== undefined && { column: parseInt(match[3], 10) }),
+    ...(match[3] !== undefined && { column: parseInt(match[3], 10) })
   };
 }
 
@@ -343,4 +350,3 @@ async function openSourceFile(loc: SourceLocation, dirs: string[]) {
     preview: true
   });
 }
-

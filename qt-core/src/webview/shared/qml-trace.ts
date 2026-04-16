@@ -10,9 +10,9 @@ export type QmlTraceCommandReply =
   | {
       fileName: string;
       filePath: string;
-      additionalDirs: string[]
+      additionalDirs: string[];
       viewer: {
-        path: string,
-        valid: boolean
-      }
-    }
+        path: string;
+        valid: boolean;
+      };
+    };
