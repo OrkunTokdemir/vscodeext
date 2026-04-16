@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as vscode from 'vscode';
@@ -233,14 +234,30 @@ async function onRecordingCompleted(
   cleanupSession();
 
   // Automatically open the trace file in the profiler viewer
-  try {
-    await vscode.commands.executeCommand(
-      'vscode.openWith',
-      vscode.Uri.file(filePath),
-      'qt-core.qmlTrace'
-    );
-  } catch (err) {
-    logger.warn('Could not auto-open trace file:', String(err));
+  const customViewer = vscode.workspace
+    .getConfiguration('qt-core')
+    .get<string>('customQmlTrcaeViewerExePath', '');
+
+  if (customViewer && fs.existsSync(customViewer)) {
+    try {
+      const quoted = `"${customViewer.replace(/(["\\])/g, '\\$1')}"`;
+      const proc = await spawnProcessForTool(quoted, [filePath]);
+      proc.on('error', (err) => {
+        logger.error('Failed to launch custom trace viewer:', String(err));
+      });
+    } catch (err) {
+      logger.warn('Could not launch custom trace viewer:', String(err));
+    }
+  } else {
+    try {
+      await vscode.commands.executeCommand(
+        'vscode.openWith',
+        vscode.Uri.file(filePath),
+        'qt-core.qmlTrace'
+      );
+    } catch (err) {
+      logger.warn('Could not auto-open trace file:', String(err));
+    }
   }
 }
 
