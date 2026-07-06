@@ -71,6 +71,7 @@ export async function activate(context: vscode.ExtensionContext) {
     for (const folder of vscode.workspace.workspaceFolders) {
       const project = await createQMLProject(folder, context);
       projectManager.addProject(project);
+      await projectManager.initializeProject(project);
     }
   }
 
@@ -111,9 +112,11 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
   telemetry.sendEvent(`activated`);
-  projectManager.getConfigValues();
-  projectManager.updateQmllsParams();
-  startQmlls();
+
+  // Initial projects are created directly during activation, so they do not
+  // go through ProjectManager.onProjectAdded(...). Perform only the background
+  // qmlls release check here; project startup already happened above.
+  checkQmllsReleaseInBackground();
 
   const api = new QtQmlAPIImpl(context);
   context.subscriptions.push(api);
@@ -121,10 +124,7 @@ export async function activate(context: vscode.ExtensionContext) {
   return api;
 }
 
-function startQmlls() {
-  // Start qmlls immediately without waiting for the release check
-  void projectManager.startQmlls();
-
+function checkQmllsReleaseInBackground() {
   // Perform the release check asynchronously in the background
   const shouldCheck = !getDoNotAskForDownloadingQmlls();
   if (shouldCheck) {
