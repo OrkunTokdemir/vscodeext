@@ -29,12 +29,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import {
-  QtAccountStorage,
-  QtAccount,
-  AuthState,
-  LoginError
-} from '../src';
+import { QtAccountStorage, QtAccount, AuthState, LoginError } from '../src';
 
 // ── CLI argument parsing ─────────────────────────────────────────────────────
 
@@ -181,11 +176,7 @@ async function testIniPreservesOtherSections(): Promise<void> {
     // Pre-populate with other sections
     fs.writeFileSync(
       filePath,
-      [
-        '[OtherSection]',
-        'some_key=some_value',
-        '',
-      ].join('\n')
+      ['[OtherSection]', 'some_key=some_value', ''].join('\n')
     );
 
     // Save credentials into the same file
@@ -227,9 +218,7 @@ async function testFilePermissions(): Promise<void> {
     const stat = fs.statSync(filePath);
     const mode = stat.mode & 0o777;
     if (mode !== 0o600) {
-      throw new Error(
-        `Expected file mode 0o600, got 0o${mode.toString(8)}`
-      );
+      throw new Error(`Expected file mode 0o600, got 0o${mode.toString(8)}`);
     }
     log(`  -> File permissions 0o600 OK`);
   } finally {
@@ -285,7 +274,9 @@ async function testClearAndSave(): Promise<void> {
     const reader = new QtAccountStorage();
     reader.loadFromPath(filePath);
     if (reader.email !== '') {
-      throw new Error(`Expected empty email after clear, got '${reader.email}'`);
+      throw new Error(
+        `Expected empty email after clear, got '${reader.email}'`
+      );
     }
     if (reader.jwt !== '') {
       throw new Error(`Expected empty jwt after clear, got '${reader.jwt}'`);
@@ -339,7 +330,9 @@ async function testDefaultPathsExist(): Promise<void> {
   const qtCompanyPath = QtAccountStorage.defaultQtCompanyPath();
 
   if (!defaultPath.endsWith('qtaccount.ini')) {
-    throw new Error(`Default path should end with qtaccount.ini: ${defaultPath}`);
+    throw new Error(
+      `Default path should end with qtaccount.ini: ${defaultPath}`
+    );
   }
   if (!defaultPath.includes('Qt')) {
     throw new Error(`Default path should contain 'Qt': ${defaultPath}`);
@@ -392,9 +385,7 @@ async function testLoginWithValidCredentials(
       throw new Error('No email in response');
     }
     if (credentials.email !== email) {
-      throw new Error(
-        `Email mismatch: '${credentials.email}' !== '${email}'`
-      );
+      throw new Error(`Email mismatch: '${credentials.email}' !== '${email}'`);
     }
 
     // State should have transitioned: LoggingIn -> LoggedIn
@@ -475,10 +466,7 @@ async function testLoginEmptyCredentials(): Promise<void> {
   }
 }
 
-async function testRenewLogin(
-  email: string,
-  password: string
-): Promise<void> {
+async function testRenewLogin(email: string, password: string): Promise<void> {
   const dir = tmpDir('renew');
   try {
     const storagePath = path.join(dir, 'qtaccount.ini');
