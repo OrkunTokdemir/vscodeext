@@ -59,3 +59,21 @@ export type {
 // Authentication
 export { QtAccountStorage, QtAccount } from './qt-account';
 export type { QtAccountEvents, LogLevel, LogCallback } from './qt-account';
+
+// OIDC browser login (login.qt.io)
+export {
+  QtLoginOidc,
+  OidcError,
+  generatePkcePair,
+  generateState,
+  computeS256Challenge,
+  OIDC_SCOPES
+} from './oidc';
+export type {
+  QtLoginOidcOptions,
+  OidcEndpoints,
+  OidcTokens,
+  OidcIdentity,
+  LoginAttempt,
+  PkcePair
+} from './oidc';

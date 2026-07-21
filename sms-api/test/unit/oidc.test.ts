@@ -12,6 +12,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as http from 'http';
 import type { AddressInfo } from 'net';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 import {
   computeS256Challenge,
@@ -302,5 +305,121 @@ describe('QtLoginOidc token endpoint', () => {
       }
     );
     srv.close();
+  });
+});
+
+// ── Identity resolution & persistence ────────────────────────────────────────
+
+function makeJwt(payload: Record<string, unknown>): string {
+  return [
+    Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString(
+      'base64url'
+    ),
+    Buffer.from(JSON.stringify(payload)).toString('base64url'),
+    'fake-signature'
+  ].join('.');
+}
+
+describe('QtLoginOidc identity & persistence', () => {
+  it('resolves identity from ID token claims', async () => {
+    const oidc = new QtLoginOidc({
+      clientId: 'cid-1',
+      serverUrl: 'http://127.0.0.1:1' // must not be contacted
+    });
+    const identity = await oidc.resolveIdentity({
+      accessToken: 'access-1',
+      idToken: makeJwt({ email: 'dev@qt.io', sub: 'user-42' })
+    });
+    assert.deepEqual(identity, { email: 'dev@qt.io', userId: 'user-42' });
+  });
+
+  it('falls back to the userinfo endpoint when there is no ID token', async () => {
+    let capturedAuth = '';
+    const srv = await startServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/api/userinfo') {
+        capturedAuth = req.headers.authorization ?? '';
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ email: 'dev@qt.io', sub: 'user-42' }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const oidc = new QtLoginOidc({ clientId: 'cid-1', serverUrl: srv.url });
+    const identity = await oidc.resolveIdentity({ accessToken: 'access-1' });
+    assert.equal(capturedAuth, 'Bearer access-1');
+    assert.deepEqual(identity, { email: 'dev@qt.io', userId: 'user-42' });
+    srv.close();
+  });
+
+  it('rejects when no email can be determined', async () => {
+    const srv = await startServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/api/userinfo') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ sub: 'user-42' }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const oidc = new QtLoginOidc({ clientId: 'cid-1', serverUrl: srv.url });
+    await assert.rejects(
+      () => oidc.resolveIdentity({ accessToken: 'access-1' }),
+      (err: unknown) => {
+        assert.ok(err instanceof OidcError);
+        assert.ok(err.message.includes('email'));
+        return true;
+      }
+    );
+    srv.close();
+  });
+
+  it('persists credentials to qtaccount.ini', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sms-oidc-test-'));
+    const iniPath = path.join(dir, 'qtaccount.ini');
+    try {
+      const oidc = new QtLoginOidc({
+        clientId: 'cid-1',
+        serverUrl: 'http://127.0.0.1:1',
+        storagePath: iniPath
+      });
+      const credentials = oidc.persistCredentials(
+        { email: 'dev@qt.io', userId: 'user-42' },
+        { accessToken: 'access-jwt-1' }
+      );
+      assert.deepEqual(credentials, {
+        email: 'dev@qt.io',
+        jwt: 'access-jwt-1',
+        userId: 'user-42'
+      });
+      const content = fs.readFileSync(iniPath, 'utf-8');
+      assert.ok(content.includes('[QtAccount]'));
+      assert.ok(content.includes('email=dev@qt.io'));
+      assert.ok(content.includes('jwt=access-jwt-1'));
+      assert.ok(content.includes('u=user-42'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('derives the user id from the access token when identity lacks one', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sms-oidc-test-'));
+    const iniPath = path.join(dir, 'qtaccount.ini');
+    try {
+      const oidc = new QtLoginOidc({
+        clientId: 'cid-1',
+        serverUrl: 'http://127.0.0.1:1',
+        storagePath: iniPath
+      });
+      const credentials = oidc.persistCredentials(
+        { email: 'dev@qt.io', userId: '' },
+        { accessToken: makeJwt({ sub: 'user-77' }) }
+      );
+      assert.equal(credentials.userId, 'user-77');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

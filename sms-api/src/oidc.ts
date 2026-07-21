@@ -19,7 +19,13 @@ import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 
-import type { LogCallback, LogLevel } from './qt-account';
+import {
+  QtAccountStorage,
+  decodeJwtPayload,
+  type LogCallback,
+  type LogLevel
+} from './qt-account';
+import type { AuthCredentials } from './types';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -134,6 +140,11 @@ export interface OidcTokens {
   expiresIn?: number;
 }
 
+export interface OidcIdentity {
+  email: string;
+  userId: string;
+}
+
 // ── QtLoginOidc ──────────────────────────────────────────────────────────────
 
 export interface QtLoginOidcOptions {
@@ -164,6 +175,7 @@ export class QtLoginOidc {
   private readonly _clientId: string;
   private readonly _serverUrl: string;
   private readonly _requestTimeoutMs: number;
+  private readonly _storagePath: string | undefined;
   private _endpoints: OidcEndpoints | undefined;
 
   onLog: LogCallback | undefined;
@@ -176,6 +188,7 @@ export class QtLoginOidc {
       DEFAULT_LOGIN_SERVER;
     this._requestTimeoutMs =
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this._storagePath = options.storagePath;
   }
 
   private log(level: LogLevel, message: string): void {
@@ -366,5 +379,87 @@ export class QtLoginOidc {
         ? { expiresIn: obj.expires_in }
         : {})
     };
+  }
+
+  /**
+   * Determine the account email and user id — from ID-token claims when
+   * present, otherwise from the userinfo endpoint.
+   */
+  async resolveIdentity(tokens: OidcTokens): Promise<OidcIdentity> {
+    if (tokens.idToken) {
+      const claims = decodeJwtPayload(tokens.idToken);
+      const email = typeof claims?.email === 'string' ? claims.email : '';
+      const sub = typeof claims?.sub === 'string' ? claims.sub : '';
+      if (email) {
+        return { email, userId: sub };
+      }
+      this.log('warn', 'ID token has no email claim; falling back to userinfo');
+    }
+
+    const endpoints = await this.discover();
+    let res: HttpResponse;
+    try {
+      res = await request(endpoints.userinfoEndpoint, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${tokens.accessToken}`
+        },
+        timeoutMs: this._requestTimeoutMs
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new OidcError(`Userinfo request failed: ${msg}`);
+    }
+
+    let email = '';
+    let sub = '';
+    try {
+      const parsed: unknown = JSON.parse(res.body);
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        const obj = parsed as Record<string, unknown>;
+        email = typeof obj.email === 'string' ? obj.email : '';
+        sub = typeof obj.sub === 'string' ? obj.sub : '';
+      }
+    } catch {
+      // fall through to the email check below
+    }
+    if (!email) {
+      throw new OidcError(
+        'Could not determine the account email from the login response'
+      );
+    }
+    return { email, userId: sub };
+  }
+
+  /**
+   * Persist the OIDC access token as the Qt Account JWT in qtaccount.ini
+   * (shared with the C++ service). Caller is responsible for any access
+   * checks — nothing is written before this is called.
+   */
+  persistCredentials(
+    identity: OidcIdentity,
+    tokens: OidcTokens
+  ): AuthCredentials {
+    const storage = new QtAccountStorage();
+    storage.onLog = this.onLog;
+    if (this._storagePath) {
+      storage.loadFromPath(this._storagePath);
+    } else {
+      storage.load();
+    }
+    let userId = identity.userId;
+    if (!userId) {
+      const claims = decodeJwtPayload(tokens.accessToken);
+      userId = typeof claims?.sub === 'string' ? claims.sub : '';
+    }
+    storage.setCredentials(identity.email, tokens.accessToken, userId);
+    storage.save();
+    this.log('info', `Persisted Qt Account credentials for ${identity.email}`);
+    return storage.toCredentials();
   }
 }
