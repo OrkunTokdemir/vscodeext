@@ -56,6 +56,7 @@ const DISCOVERY_PATH = '/.well-known/openid-configuration';
 const FALLBACK_AUTHORIZE_PATH = '/authorize';
 const FALLBACK_TOKEN_PATH = '/oauth/token';
 const FALLBACK_USERINFO_PATH = '/api/userinfo';
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 // ── HTTP helper (scheme-aware: https in production, http for tests) ─────────
 
@@ -70,18 +71,21 @@ async function request(
     method: 'GET' | 'POST';
     headers?: Record<string, string>;
     body?: string;
+    timeoutMs?: number;
   }
 ): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const lib = urlObj.protocol === 'http:' ? http : https;
+    const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     const req = lib.request(
       {
         hostname: urlObj.hostname,
         port: urlObj.port || (urlObj.protocol === 'http:' ? 80 : 443),
         path: urlObj.pathname + urlObj.search,
         method: options.method,
-        headers: options.headers
+        headers: options.headers,
+        timeout: timeoutMs
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -96,6 +100,9 @@ async function request(
     );
     req.on('error', (err) => {
       reject(err);
+    });
+    req.on('timeout', () => {
+      req.destroy(new Error(`Request timed out after ${String(timeoutMs)} ms`));
     });
     if (options.body !== undefined) {
       req.write(options.body);
@@ -113,6 +120,8 @@ export interface QtLoginOidcOptions {
   serverUrl?: string;
   /** qtaccount.ini path override (tests); defaults to the shared location. */
   storagePath?: string;
+  /** HTTP timeout for login-server requests in ms; defaults to 30 s. */
+  requestTimeoutMs?: number;
 }
 
 export interface OidcEndpoints {
@@ -131,6 +140,7 @@ export interface LoginAttempt {
 export class QtLoginOidc {
   private readonly _clientId: string;
   private readonly _serverUrl: string;
+  private readonly _requestTimeoutMs: number;
   private _endpoints: OidcEndpoints | undefined;
 
   onLog: LogCallback | undefined;
@@ -141,6 +151,8 @@ export class QtLoginOidc {
       options.serverUrl ??
       process.env.QT_LOGIN_SERVER_URL ??
       DEFAULT_LOGIN_SERVER;
+    this._requestTimeoutMs =
+      options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   private log(level: LogLevel, message: string): void {
@@ -167,7 +179,8 @@ export class QtLoginOidc {
     try {
       const res = await request(this._serverUrl + DISCOVERY_PATH, {
         method: 'GET',
-        headers: { Accept: 'application/json' }
+        headers: { Accept: 'application/json' },
+        timeoutMs: this._requestTimeoutMs
       });
       if (res.statusCode !== 200) {
         throw new Error(`HTTP ${String(res.statusCode)}`);

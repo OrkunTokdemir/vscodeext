@@ -144,4 +144,22 @@ describe('QtLoginOidc.beginLogin', () => {
     assert.ok(attempt.authorizationUrl.startsWith(`${srv.url}/authorize?`));
     srv.close();
   });
+
+  it('times out an unresponsive discovery server and falls back', async () => {
+    // Server accepts connections but never responds.
+    const srv = await startServer(() => {
+      /* never respond */
+    });
+
+    const oidc = new QtLoginOidc({
+      clientId: 'cid-1',
+      serverUrl: srv.url,
+      requestTimeoutMs: 100
+    });
+    const attempt = await oidc.beginLogin(
+      'vscode://theqtcompany.qt-sm/authenticate'
+    );
+    assert.ok(attempt.authorizationUrl.startsWith(`${srv.url}/authorize?`));
+    srv.close();
+  });
 });
