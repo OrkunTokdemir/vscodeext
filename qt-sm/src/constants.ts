@@ -13,6 +13,14 @@ export const CONF_GET_STARTED_DONE = 'getStartedDone';
 export const DEFAULT_BACKEND_URL = 'https://api.install.qt.io';
 // Qt Account "Forgot password" page, opened from the walkthrough sign-in step.
 export const RESET_PASSWORD_URL = 'https://login.qt.io/forgot';
+// OIDC client registered with login.qt.io for this extension. Placeholder
+// until the registration exists (see the web-auth design spec); override
+// for testing via the QT_OIDC_CLIENT_ID environment variable.
+export const OIDC_CLIENT_ID = process.env.QT_OIDC_CLIENT_ID ?? 'qt-vscode-sm';
+// How long the browser sign-in may take before the attempt is abandoned.
+export const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+// SecretStorage key holding the OIDC refresh token.
+export const SECRET_REFRESH_TOKEN = 'qtAccountRefreshToken';
 
 // Survey popup constants
 export const SURVEY_URL = 'https://www.surveymonkey.com/r/BMQH2W3';

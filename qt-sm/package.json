@@ -31,7 +31,8 @@
   "qna": "marketplace",
   "pricing": "Free",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onUri"
   ],
   "main": "./out/extension.js",
   "contributes": {
