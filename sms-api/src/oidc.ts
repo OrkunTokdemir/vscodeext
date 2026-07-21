@@ -111,6 +111,29 @@ async function request(
   });
 }
 
+// ── Errors & token types ─────────────────────────────────────────────────────
+
+/**
+ * Error from the token or userinfo endpoint. `oauthError` carries the
+ * RFC 6749 error code (e.g. "invalid_grant") when the server provided one.
+ */
+export class OidcError extends Error {
+  readonly oauthError: string | undefined;
+
+  constructor(message: string, oauthError?: string) {
+    super(message);
+    this.name = 'OidcError';
+    this.oauthError = oauthError;
+  }
+}
+
+export interface OidcTokens {
+  accessToken: string;
+  idToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+}
+
 // ── QtLoginOidc ──────────────────────────────────────────────────────────────
 
 export interface QtLoginOidcOptions {
@@ -242,6 +265,106 @@ export class QtLoginOidc {
       state,
       codeVerifier: verifier,
       redirectUri
+    };
+  }
+
+  /** Exchange an authorization code for tokens (PKCE public client). */
+  async exchangeCode(params: {
+    code: string;
+    codeVerifier: string;
+    redirectUri: string;
+  }): Promise<OidcTokens> {
+    const endpoints = await this.discover();
+    const form = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: this._clientId,
+      code: params.code,
+      redirect_uri: params.redirectUri,
+      code_verifier: params.codeVerifier
+    }).toString();
+    this.log('info', 'Exchanging authorization code for tokens');
+    return this.postToken(endpoints.tokenEndpoint, form);
+  }
+
+  /** Obtain a fresh access token using a refresh token. */
+  async refresh(refreshToken: string): Promise<OidcTokens> {
+    const endpoints = await this.discover();
+    const form = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: this._clientId,
+      refresh_token: refreshToken
+    }).toString();
+    this.log('info', 'Refreshing access token');
+    return this.postToken(endpoints.tokenEndpoint, form);
+  }
+
+  private async postToken(url: string, form: string): Promise<OidcTokens> {
+    let res: HttpResponse;
+    try {
+      res = await request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          'Content-Length': String(Buffer.byteLength(form))
+        },
+        body: form,
+        timeoutMs: this._requestTimeoutMs
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.log('error', `Token request failed: ${msg}`);
+      throw new OidcError(`Token request failed: ${msg}`);
+    }
+
+    let obj: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(res.body);
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error('not an object');
+      }
+      obj = parsed as Record<string, unknown>;
+    } catch {
+      this.log(
+        'error',
+        `Unexpected token endpoint reply (HTTP ${String(res.statusCode)})`
+      );
+      throw new OidcError(
+        `Unexpected reply from the login server (HTTP ${String(res.statusCode)})`
+      );
+    }
+
+    if (res.statusCode >= 400 || typeof obj.access_token !== 'string') {
+      const error = typeof obj.error === 'string' ? obj.error : undefined;
+      const description =
+        typeof obj.error_description === 'string'
+          ? obj.error_description
+          : undefined;
+      this.log(
+        'error',
+        `Token request rejected: ${error ?? String(res.statusCode)}`
+      );
+      throw new OidcError(
+        description ??
+          error ??
+          `Token request failed (HTTP ${String(res.statusCode)})`,
+        error
+      );
+    }
+
+    return {
+      accessToken: obj.access_token,
+      ...(typeof obj.id_token === 'string' ? { idToken: obj.id_token } : {}),
+      ...(typeof obj.refresh_token === 'string'
+        ? { refreshToken: obj.refresh_token }
+        : {}),
+      ...(typeof obj.expires_in === 'number'
+        ? { expiresIn: obj.expires_in }
+        : {})
     };
   }
 }

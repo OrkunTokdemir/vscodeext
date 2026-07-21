@@ -18,6 +18,7 @@ import {
   generatePkcePair,
   generateState,
   QtLoginOidc,
+  OidcError,
   OIDC_SCOPES
 } from '../../src/oidc';
 
@@ -160,6 +161,146 @@ describe('QtLoginOidc.beginLogin', () => {
       'vscode://theqtcompany.qt-sm/authenticate'
     );
     assert.ok(attempt.authorizationUrl.startsWith(`${srv.url}/authorize?`));
+    srv.close();
+  });
+});
+
+// ── Token endpoint ───────────────────────────────────────────────────────────
+
+describe('QtLoginOidc token endpoint', () => {
+  it('exchanges the authorization code with PKCE verifier', async () => {
+    let capturedBody = '';
+    let capturedContentType = '';
+    const srv = await startServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/oauth/token') {
+        capturedContentType = req.headers['content-type'] ?? '';
+        void readBody(req).then((body) => {
+          capturedBody = body;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              access_token: 'access-1',
+              id_token: 'id-1',
+              refresh_token: 'refresh-1',
+              expires_in: 3600,
+              token_type: 'Bearer'
+            })
+          );
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const oidc = new QtLoginOidc({ clientId: 'cid-1', serverUrl: srv.url });
+    const tokens = await oidc.exchangeCode({
+      code: 'code-123',
+      codeVerifier: 'verifier-123',
+      redirectUri: 'vscode://theqtcompany.qt-sm/authenticate'
+    });
+
+    assert.equal(capturedContentType, 'application/x-www-form-urlencoded');
+    const params = new URLSearchParams(capturedBody);
+    assert.equal(params.get('grant_type'), 'authorization_code');
+    assert.equal(params.get('client_id'), 'cid-1');
+    assert.equal(params.get('code'), 'code-123');
+    assert.equal(params.get('code_verifier'), 'verifier-123');
+    assert.equal(
+      params.get('redirect_uri'),
+      'vscode://theqtcompany.qt-sm/authenticate'
+    );
+    assert.deepEqual(tokens, {
+      accessToken: 'access-1',
+      idToken: 'id-1',
+      refreshToken: 'refresh-1',
+      expiresIn: 3600
+    });
+    srv.close();
+  });
+
+  it('surfaces OAuth errors with the RFC 6749 error code', async () => {
+    const srv = await startServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/oauth/token') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'invalid_grant',
+            error_description: 'Authorization code expired'
+          })
+        );
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const oidc = new QtLoginOidc({ clientId: 'cid-1', serverUrl: srv.url });
+    await assert.rejects(
+      () =>
+        oidc.exchangeCode({
+          code: 'stale',
+          codeVerifier: 'v',
+          redirectUri: 'vscode://theqtcompany.qt-sm/authenticate'
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof OidcError);
+        assert.equal(err.oauthError, 'invalid_grant');
+        assert.equal(err.message, 'Authorization code expired');
+        return true;
+      }
+    );
+    srv.close();
+  });
+
+  it('refreshes the access token', async () => {
+    let capturedBody = '';
+    const srv = await startServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/oauth/token') {
+        void readBody(req).then((body) => {
+          capturedBody = body;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              access_token: 'access-2',
+              refresh_token: 'refresh-2',
+              expires_in: 3600
+            })
+          );
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const oidc = new QtLoginOidc({ clientId: 'cid-1', serverUrl: srv.url });
+    const tokens = await oidc.refresh('refresh-1');
+
+    const params = new URLSearchParams(capturedBody);
+    assert.equal(params.get('grant_type'), 'refresh_token');
+    assert.equal(params.get('client_id'), 'cid-1');
+    assert.equal(params.get('refresh_token'), 'refresh-1');
+    assert.equal(tokens.accessToken, 'access-2');
+    assert.equal(tokens.refreshToken, 'refresh-2');
+    srv.close();
+  });
+
+  it('rejects a non-JSON token response', async () => {
+    const srv = await startServer((_req, res) => {
+      res.writeHead(502, { 'Content-Type': 'text/html' });
+      res.end('<html>Bad gateway</html>');
+    });
+
+    const oidc = new QtLoginOidc({ clientId: 'cid-1', serverUrl: srv.url });
+    await assert.rejects(
+      () => oidc.refresh('refresh-1'),
+      (err: unknown) => {
+        assert.ok(err instanceof OidcError);
+        assert.ok(err.message.includes('502'));
+        return true;
+      }
+    );
     srv.close();
   });
 });
