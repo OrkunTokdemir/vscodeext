@@ -8,6 +8,7 @@ import {
   QtAccountStorage,
   QtLoginOidc,
   OidcError,
+  decodeJwtPayload,
   type AuthCredentials,
   type LogLevel
 } from 'sms-api';
@@ -81,8 +82,15 @@ export class QtAccountAuthenticationProvider
       `Storage load result: ${String(loaded)}, hasCredentials: ${String(storage.hasCredentials())}`
     );
     if (loaded && storage.hasCredentials()) {
-      this._currentSession = credentialsToSession(storage.toCredentials());
-      logger.info(`Loaded stored Qt Account session for ${storage.email}`);
+      if (isJwtExpired(storage.jwt)) {
+        logger.info(
+          `Stored Qt Account token for ${storage.email} is expired; ` +
+            'renewal or sign-in required'
+        );
+      } else {
+        this._currentSession = credentialsToSession(storage.toCredentials());
+        logger.info(`Loaded stored Qt Account session for ${storage.email}`);
+      }
     } else {
       logger.info('No stored credentials found');
     }
@@ -116,8 +124,10 @@ export class QtAccountAuthenticationProvider
     const oidc = new QtLoginOidc({ clientId: OIDC_CLIENT_ID });
     oidc.onLog = logCallback('QtLoginOidc');
 
-    // asExternalUri makes the callback work in Remote-SSH / web;
-    // env.uriScheme handles Insiders and other VS Code flavors.
+    // asExternalUri keeps the callback working over Remote-SSH; env.uriScheme
+    // handles Insiders and other VS Code flavors. Web clients (vscode.dev) are
+    // untested and out of scope for the alpha: openExternal(Uri.parse(...))
+    // can re-encode https callback URLs whose query embeds another query.
     const callbackUri = await vscode.env.asExternalUri(
       vscode.Uri.parse(
         `${vscode.env.uriScheme}://${this._context.extension.id}${AUTH_CALLBACK_PATH}`
@@ -125,11 +135,25 @@ export class QtAccountAuthenticationProvider
     );
     const attempt = await oidc.beginLogin(callbackUri.toString(true));
 
+    // Register the pending login before opening the browser so a fast
+    // redirect cannot arrive before anyone is listening for it.
+    const cts = new vscode.CancellationTokenSource();
+    const callbackPromise = this._uriHandler.waitForCallback(
+      attempt.state,
+      LOGIN_TIMEOUT_MS,
+      cts.token
+    );
+    // Guard against an unhandled rejection if we bail out below before
+    // awaiting the callback.
+    void callbackPromise.catch(() => undefined);
+
     logger.info('Opening browser for Qt Account login');
     const opened = await vscode.env.openExternal(
       vscode.Uri.parse(attempt.authorizationUrl)
     );
     if (!opened) {
+      cts.cancel();
+      cts.dispose();
       const msg = 'Could not open the browser for Qt Account login.';
       logger.error(msg);
       void vscode.window.showErrorMessage(msg);
@@ -144,12 +168,16 @@ export class QtAccountAuthenticationProvider
           title: 'Signing in to Qt Account in your browser...',
           cancellable: true
         },
-        async (_progress, token) =>
-          this._uriHandler.waitForCallback(
-            attempt.state,
-            LOGIN_TIMEOUT_MS,
-            token
-          )
+        async (_progress, token) => {
+          const cancelSub = token.onCancellationRequested(() => {
+            cts.cancel();
+          });
+          try {
+            return await callbackPromise;
+          } finally {
+            cancelSub.dispose();
+          }
+        }
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -158,9 +186,11 @@ export class QtAccountAuthenticationProvider
         void vscode.window.showErrorMessage(`Qt Account login failed: ${msg}`);
       }
       throw err instanceof Error ? err : new Error(msg);
+    } finally {
+      cts.dispose();
     }
 
-    if (callback.error ?? !callback.code) {
+    if (callback.error !== undefined || !callback.code) {
       const readable = readableOAuthError(callback);
       logger.error(
         `Browser login failed: ${callback.error ?? 'no authorization code returned'}`
@@ -274,12 +304,13 @@ export class QtAccountAuthenticationProvider
           tokens.refreshToken
         );
       }
+      const hadSession = this._currentSession !== undefined;
       this._currentSession = credentialsToSession(storage.toCredentials());
-      this._onDidChangeSessions.fire({
-        added: [],
-        removed: [],
-        changed: [this._currentSession]
-      });
+      this._onDidChangeSessions.fire(
+        hadSession
+          ? { added: [], removed: [], changed: [this._currentSession] }
+          : { added: [this._currentSession], removed: [], changed: [] }
+      );
       logger.info(`Renewed Qt Account session for ${storage.email}`);
       return this._currentSession;
     } catch (err) {
@@ -307,6 +338,22 @@ function readableOAuthError(callback: AuthCallback): string {
     return `The login server reported: ${callback.error}`;
   }
   return 'The browser login did not return an authorization code.';
+}
+
+// Treat tokens expiring within this margin as already expired so a token
+// that dies mid-request does not count as a live session.
+const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000;
+
+/**
+ * Whether the JWT's exp claim is in the past. Tokens without a decodable
+ * exp claim are treated as not expired (legacy behavior).
+ */
+function isJwtExpired(jwt: string): boolean {
+  const payload = decodeJwtPayload(jwt);
+  if (!payload || typeof payload.exp !== 'number') {
+    return false;
+  }
+  return payload.exp * 1000 <= Date.now() + TOKEN_EXPIRY_MARGIN_MS;
 }
 
 function credentialsToSession(
