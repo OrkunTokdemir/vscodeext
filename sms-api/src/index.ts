@@ -57,7 +57,7 @@ export type {
 } from './client';
 
 // Authentication
-export { QtAccountStorage, QtAccount } from './qt-account';
+export { QtAccountStorage, QtAccount, decodeJwtPayload } from './qt-account';
 export type { QtAccountEvents, LogLevel, LogCallback } from './qt-account';
 
 // OIDC browser login (login.qt.io)
