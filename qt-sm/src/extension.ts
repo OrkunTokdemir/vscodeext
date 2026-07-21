@@ -30,6 +30,7 @@ import {
 } from '@/commands';
 import { disconnect } from '@/service-connection';
 import { registerAuthenticationProvider } from '@/auth-provider';
+import { registerAuthUriHandler } from '@/uri-handler';
 import { AccountViewProvider } from '@/account-view';
 import { initSurvey, disposeSurvey } from '@/survey';
 import {
@@ -230,7 +231,8 @@ export async function activate(context: vscode.ExtensionContext) {
   publishQtToolsPaths();
   watchQtToolsOnDisk(context, publishQtToolsPaths);
 
-  const authProvider = registerAuthenticationProvider(context);
+  const uriHandler = registerAuthUriHandler(context);
+  const authProvider = registerAuthenticationProvider(context, uriHandler);
   setAuthProvider(authProvider);
 
   // Activity bar account view
