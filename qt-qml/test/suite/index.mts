@@ -14,7 +14,7 @@ export function run(): Promise<void> {
   });
   const testsRoot = path.resolve(__dirname);
   return new Promise((c, e) => {
-    const testFiles = new glob.Glob('{extension,command,installer}.test.js', {
+    const testFiles = new glob.Glob('{extension,command,installer,qtbridge-qmlls-update}.test.js', {
       cwd: testsRoot
     });
     const testFileStream = testFiles.stream();
