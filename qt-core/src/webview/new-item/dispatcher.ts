@@ -6,6 +6,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { createLogger, telemetry } from 'qt-lib';
+import type {
+  QtNewItemProvider,
+  QtNewItemRequest,
+  QtNewItemType
+} from 'qt-lib';
 import * as texts from '@/texts';
 import { QtcliRestClient, QtcliRestError } from '@/qtcli/rest';
 import { openFilesUnder, openUri } from '@/qtcli/common';
@@ -15,6 +20,7 @@ import { WebviewChannel } from '@/webview/channel';
 import { Command, CommandId, IsCommand } from '@/webview/shared/message';
 import { GlobalStateManager } from '@/state';
 import type { NewItemPanel } from './panel';
+import { getNewItemProviders } from './provider';
 
 const logger = createLogger('new-item-handler');
 type CommandHandler = (command: Command) => void | Promise<void>;
@@ -26,6 +32,7 @@ export class NewItemDispatcher {
   private _panel: NewItemPanel | undefined = undefined;
   private _uiConfigs: unknown = {};
   private _context: vscode.ExtensionContext | undefined;
+  private readonly _presetProviders = new Map<string, QtNewItemProvider>();
 
   public constructor(qtcliSocketName: string) {
     this._handlers = new Map<CommandId, CommandHandler>([
@@ -91,11 +98,14 @@ export class NewItemDispatcher {
 
   private readonly onUiItemCreationRequested = async (cmd: Command) => {
     try {
-      const data = await this._qtcliRest.call({
-        method: 'post',
-        url: '/items',
-        data: cmd.payload
-      });
+      const provider = this.getPresetProvider(cmd);
+      const data = provider
+        ? await provider.create(this.getProviderRequest(cmd))
+        : await this._qtcliRest.call({
+            method: 'post',
+            url: '/items',
+            data: cmd.payload
+          });
 
       const openIn = _.get(cmd.payload, 'openIn', 'addToWorkspace') as
         | 'addToWorkspace'
@@ -123,9 +133,9 @@ export class NewItemDispatcher {
 
       this._panel?.close();
     } catch (e) {
-      if (e instanceof QtcliRestError) {
-        await vscode.window.showErrorMessage(e.toString());
-      }
+      await vscode.window.showErrorMessage(
+        e instanceof QtcliRestError ? e.toString() : String(e)
+      );
     }
   };
 
@@ -153,12 +163,38 @@ export class NewItemDispatcher {
 
   private readonly onUiGetAllPresets = async (cmd: Command) => {
     const data = await this._qtcliRest.get('/presets', { type: cmd.payload });
-    this._comm?.postDataReply(cmd, data);
+    const presets: unknown[] = Array.isArray(data)
+      ? (data as unknown[]).slice()
+      : [];
+    const type = cmd.payload as QtNewItemType;
+    this._presetProviders.clear();
+
+    for (const provider of getNewItemProviders()) {
+      try {
+        for (const preset of await provider.getPresets(type)) {
+          if (this._presetProviders.has(preset.id)) {
+            logger.warn(`Duplicate external preset ID: ${preset.id}`);
+            continue;
+          }
+          this._presetProviders.set(preset.id, provider);
+          presets.push(preset);
+        }
+      } catch (error) {
+        logger.error(
+          `Failed to load New Item presets from ${provider.id}: ${String(error)}`
+        );
+      }
+    }
+
+    this._comm?.postDataReply(cmd, presets);
   };
 
   private readonly onUiGetPresetById = async (cmd: Command) => {
     const id = _.toString(cmd.payload);
-    const data = await this._qtcliRest.get(`/presets/${id}`);
+    const provider = this._presetProviders.get(id);
+    const data = provider
+      ? await provider.getPreset(id)
+      : await this._qtcliRest.get(`/presets/${id}`);
     this._comm?.postDataReply(cmd, data);
   };
 
@@ -206,14 +242,43 @@ export class NewItemDispatcher {
 
   private readonly onUiValidateInputs = async (cmd: Command) => {
     try {
-      const data = await this._qtcliRest.post('/items/validate', cmd.payload);
-      this._comm?.postDataReply(cmd, data);
+      const provider = this.getPresetProvider(cmd);
+      if (provider) {
+        const issues = await provider.validate(this.getProviderRequest(cmd));
+        if (issues.length > 0) {
+          this._comm?.postErrorReplyFrom(cmd, 'Input has issues', [...issues]);
+        } else {
+          this._comm?.postDataReply(cmd, {});
+        }
+      } else {
+        const data = await this._qtcliRest.post('/items/validate', cmd.payload);
+        this._comm?.postDataReply(cmd, data);
+      }
     } catch (e) {
       if (e instanceof QtcliRestError) {
         this._comm?.postErrorReplyFrom(cmd, e.message, e.details);
+      } else {
+        this._comm?.postErrorReply(cmd, String(e));
       }
     }
   };
+
+  private getPresetProvider(cmd: Command) {
+    const presetId = _.get(cmd.payload, 'presetId', '') as string;
+    return this._presetProviders.get(presetId);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  private getProviderRequest(cmd: Command): QtNewItemRequest {
+    const type = _.get(cmd.payload, 'type', '') as QtNewItemType;
+    return {
+      type,
+      name: _.get(cmd.payload, 'name', '') as string,
+      workingDir: _.get(cmd.payload, 'workingDir', '') as string,
+      presetId: _.get(cmd.payload, 'presetId', '') as string,
+      options: _.get(cmd.payload, 'options', {}) as Record<string, unknown>
+    };
+  }
 
   private readonly onUiSelectWorkingDir = async (cmd: Command) => {
     const dir = cmd.payload?.toString() ?? getNewProjectBaseDir();
@@ -258,7 +323,9 @@ function openItemsFromQtcliResponseData(
   }
 
   if (type === 'project') {
-    generateProjectConfigs(path.normalize(filesDir));
+    if (_.get(data, 'generateProjectConfigs', true) as boolean) {
+      generateProjectConfigs(path.normalize(filesDir));
+    }
     const uri = vscode.Uri.file(path.normalize(filesDir));
     if (openIn === 'newWindow') {
       void vscode.commands.executeCommand('vscode.openFolder', uri, true);

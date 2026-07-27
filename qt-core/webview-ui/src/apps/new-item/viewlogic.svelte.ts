@@ -106,6 +106,8 @@ export async function validateInput() {
       type: data.selected.type,
       name: input.states.name,
       workingDir: input.states.workingDir,
+      presetId: data.selected.preset.id,
+      options: $state.snapshot(ui.unsavedOptionChanges)
     });
 
     input.clearIssues();

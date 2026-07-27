@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
 
 import * as vscode from 'vscode';
-import { createLogger, initLogger, telemetry } from 'qt-lib';
+import { createLogger, getCoreApi, initLogger, telemetry } from 'qt-lib';
 import { EXTENSION_ID, LOG_NAME } from '@/constants.js';
 import { QtBridgeCSharpApi } from '@/api.mjs';
+import { QtBridgeNewItemProvider } from '@/new-item-provider.mjs';
 
 const logger = createLogger('extension');
 
@@ -15,6 +16,12 @@ export async function activate(context: vscode.ExtensionContext) {
   telemetry.sendEvent('activated');
 
   const api = new QtBridgeCSharpApi();
+  const coreApi = await getCoreApi();
+  if (coreApi) {
+    context.subscriptions.push(
+      coreApi.registerNewItemProvider(new QtBridgeNewItemProvider())
+    );
+  }
   context.subscriptions.push(
     api,
     vscode.commands.registerCommand(

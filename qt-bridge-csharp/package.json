@@ -30,7 +30,8 @@
   "qna": "marketplace",
   "pricing": "Free",
   "activationEvents": [
-    "workspaceContains:**/*.csproj"
+    "workspaceContains:**/*.csproj",
+    "onCommand:qt-core.createNewItem"
   ],
   "main": "./out/extension.js",
   "extensionDependencies": [

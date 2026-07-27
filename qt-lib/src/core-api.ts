@@ -3,6 +3,7 @@
 
 import * as vscode from 'vscode';
 import { CORE_EXTENSION_ID } from './constants';
+import type { QtNewItemProviderRegistry } from './new-item-api';
 
 export interface QtAdditionalPath {
   name?: string | undefined;
@@ -105,7 +106,7 @@ export interface QtInfoResult {
   err?: Error;
 }
 
-export interface CoreAPI {
+export interface CoreAPI extends QtNewItemProviderRegistry {
   notify(config: QtWorkspaceConfigMessage): void;
   getValue<T>(
     folder: vscode.WorkspaceFolder | string,

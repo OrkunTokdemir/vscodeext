@@ -7,6 +7,7 @@ export interface Preset {
   template: string;
   meta: PresetMeta;
   prompt?: PresetPrompt;
+  customizable?: boolean;
 }
 
 export interface PresetMeta {
@@ -62,6 +63,9 @@ export class PresetWrapper {
   }
   get steps() {
     return this._raw?.prompt?.steps;
+  }
+  get customizable() {
+    return this._raw?.customizable ?? true;
   }
   get itemText() {
     if (this.isValid() && this.isDefaultPreset() && this._raw?.meta.title) {

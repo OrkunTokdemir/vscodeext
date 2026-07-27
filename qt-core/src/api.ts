@@ -16,6 +16,8 @@ import {
   QtAdditionalPath,
   ConfigType
 } from 'qt-lib';
+import type { QtNewItemProvider } from 'qt-lib';
+import { registerNewItemProvider } from '@/webview/new-item/provider';
 
 const logger = createLogger('api');
 
@@ -35,6 +37,11 @@ export class CoreAPIImpl implements CoreAPI {
 
   public get onValueChanged() {
     return this._onValueChanged.event;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  registerNewItemProvider(provider: QtNewItemProvider) {
+    return registerNewItemProvider(provider);
   }
 
   private static obtainArchs(content: string) {

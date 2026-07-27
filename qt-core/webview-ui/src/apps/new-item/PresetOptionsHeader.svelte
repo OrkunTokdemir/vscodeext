@@ -15,6 +15,7 @@ SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only
   let createEnabled = $derived.by(() => {
     return (
       data.selected.preset.isDefaultPreset() &&
+      data.selected.preset.customizable &&
       data.selected.preset.hasSteps() &&
       Object.keys(ui.unsavedOptionChanges).length !== 0
     );
