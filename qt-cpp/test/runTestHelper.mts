@@ -24,6 +24,55 @@ export function getPlatformCMakeGenerator(): string {
 }
 
 /**
+ * Resolve the CMake executable to use in the test VS Code instance.
+ *
+ * The test instance runs with a fresh user profile, so CMake Tools falls back
+ * to its default `cmake.cmakePath` ("cmake") which only works when cmake is on
+ * PATH (as on CI). On developer machines cmake is often installed outside PATH
+ * (e.g. the Qt installer's Tools dir or CMake.app on macOS), which makes
+ * `cmake.configure` fail with rc=-1 without any log output.
+ *
+ * Resolution order:
+ *  1. `QT_TEST_CMAKE` environment variable (explicit override).
+ *  2. `undefined` if cmake is already on PATH (keep CMake Tools' default).
+ *  3. Qt installer layout under `<qtRoot>/Tools`, then platform-standard
+ *     locations.
+ *
+ * @returns An absolute cmake path to write into `cmake.cmakePath`, or
+ *          `undefined` if the default ("cmake" on PATH) should be kept.
+ */
+export function resolveCMakeExecutable(qtRoot: string): string | undefined {
+  const override = process.env.QT_TEST_CMAKE?.trim();
+  if (override) return override;
+
+  const exe = process.platform === 'win32' ? 'cmake.exe' : 'cmake';
+  const onPath = (process.env.PATH ?? '')
+    .split(path.delimiter)
+    .some((dir) => dir && fs.existsSync(path.join(dir, exe)));
+  if (onPath) return undefined;
+
+  const candidates =
+    process.platform === 'darwin'
+      ? [
+          path.join(
+            qtRoot,
+            'Tools',
+            'CMake',
+            'CMake.app',
+            'Contents',
+            'bin',
+            'cmake'
+          ),
+          '/Applications/CMake.app/Contents/bin/cmake'
+        ]
+      : process.platform === 'win32'
+        ? [path.join(qtRoot, 'Tools', 'CMake_64', 'bin', 'cmake.exe')]
+        : [path.join(qtRoot, 'Tools', 'CMake', 'bin', 'cmake')];
+
+  return candidates.find((p) => fs.existsSync(p));
+}
+
+/**
  * Parse a CLI argument by name (e.g., --qt-root or --qt-root=/path)
  */
 export function getCliArg(name: string): string | undefined {
@@ -97,11 +146,19 @@ export function setupVSCodeSettings(
   fs.mkdirSync(userDir, { recursive: true });
 
   const settingsPath = path.join(userDir, 'settings.json');
-  const settings = {
+  const settings: Record<string, unknown> = {
     [`qt-core.${QT_INS_ROOT_CONFIG_NAME}`]: qtRoot,
     'cmake.loggingLevel': 'error',
     ...additionalSettings
   };
+
+  if (settings['cmake.cmakePath'] === undefined) {
+    const cmakePath = resolveCMakeExecutable(qtRoot);
+    if (cmakePath) {
+      settings['cmake.cmakePath'] = cmakePath;
+      console.log('[runTest] cmake not found on PATH; using:', cmakePath);
+    }
+  }
 
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
   console.log('[runTest] Wrote settings to:', settingsPath);

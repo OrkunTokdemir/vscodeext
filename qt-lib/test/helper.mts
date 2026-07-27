@@ -383,7 +383,10 @@ function readKitsFromDisk(): KitLike[] {
  * Selects the most appropriate CMake Kit name from a given list.
  *
  * The selection logic follows platform-specific compiler preferences:
- *  - **macOS:** prefers Clang (arm64 or AppleClang), then generic Clang, then GCC.
+ *  - **macOS:** prefers a Clang kit whose target triple matches the running
+ *    host (`<arch>-apple-darwin<os.release()>`), then any darwin-targeting
+ *    Clang, then AppleClang, then generic Clang, then GCC. Kits targeting
+ *    other OSes (e.g. `Clang-cl ... arm64-pc-windows-msvc`) are excluded.
  *  - **Windows:** prefers MSVC / Visual Studio / Clang-cl, then Clang, then MinGW/GCC.
  *  - **Linux/other:** prefers GCC, then Clang.
  *
@@ -392,21 +395,45 @@ function readKitsFromDisk(): KitLike[] {
  * @param list - Array of kits (each with an optional `name` or `label`).
  * @returns The chosen kit name or `undefined` if no kits are available.
  */
-function pickKit(list: KitLike[]): string | undefined {
+export function pickKit(list: KitLike[]): string | undefined {
   if (!Array.isArray(list) || list.length === 0) return undefined;
 
-  const preferences: RegExp[] =
-    process.platform === 'darwin'
-      ? [/Clang.*arm64/i, /AppleClang/i, /Clang/i, /GCC/i]
-      : process.platform === 'win32'
-        ? [/MSVC|Visual Studio|Clang-cl/i, /Clang/i, /GCC|MinGW/i]
-        : [/GCC/i, /Clang/i];
+  const nameOf = (k: KitLike) => k.name ?? k.label ?? '';
+
+  let candidates = list;
+  let preferences: RegExp[];
+
+  if (process.platform === 'darwin') {
+    // The kits file accumulates entries from previous macOS installations and
+    // cross toolchains, so drop anything that does not target the host OS.
+    candidates = list.filter(
+      (k) => !/windows|msvc|mingw|android|ios|wasm|emscripten/i.test(nameOf(k))
+    );
+    // Scanned kit names end with the compiler's target triple, e.g.
+    // "Clang 16.0.0 arm64-apple-darwin25.5.0". os.release() is that same
+    // Darwin kernel version, so an exact-triple match picks a kit from the
+    // current OS installation instead of a stale one.
+    const arch = os.arch() === 'arm64' ? 'arm64' : 'x86_64';
+    const darwinTriple = `${arch}-apple-darwin`;
+    const hostTriple = `${darwinTriple}${os.release()}`.replace(/\./g, '\\.');
+    preferences = [
+      new RegExp(`\\bClang\\b.*${hostTriple}`, 'i'),
+      new RegExp(`\\bClang\\b.*${darwinTriple}`, 'i'),
+      /AppleClang/i,
+      /Clang(?!-cl)/i,
+      /GCC/i
+    ];
+  } else if (process.platform === 'win32') {
+    preferences = [/MSVC|Visual Studio|Clang-cl/i, /Clang/i, /GCC|MinGW/i];
+  } else {
+    preferences = [/GCC/i, /Clang/i];
+  }
 
   for (const re of preferences) {
-    const k = list.find((kk) => re.test(kk.name ?? kk.label ?? ''));
+    const k = candidates.find((kk) => re.test(nameOf(kk)));
     if (k) return k.name ?? k.label;
   }
-  const first = list[0];
+  const first = candidates[0] ?? list[0];
   return first ? (first.name ?? first.label) : undefined;
 }
 

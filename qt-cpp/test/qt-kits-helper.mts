@@ -38,7 +38,7 @@ export async function selectAndApplyQtKit(
   kits = filterQtKitsForHostDesktop(kits);
 
   // Filter to Qt kits and pick one appropriate for this machine
-  const kitName = pickQtKit(kits);
+  const kitName = pickQtKit(kits, requiredQtMajor);
 
   // Apply it to CMake Tools (no-op if undefined)
   if (kitName) {
@@ -288,10 +288,57 @@ function isQtKit(k: KitLike): boolean {
   return false;
 }
 
-/** Pick the "best" Qt kit for this OS/arch from a list of kits. */
-export function pickQtKit(allKits: KitLike[]): string | undefined {
-  const qtKits = allKits.filter(isQtKit);
+/** Extract the Qt version of a kit from its install path or its name. */
+function qtVersionOf(k: KitLike): [number, number, number] | undefined {
+  const inst = k.environmentVariables?.VSCODE_QT_INSTALLATION;
+  const fromPath = inst?.match(/[/\\](\d+)\.(\d+)\.(\d+)(?:[/\\]|$)/);
+  if (fromPath)
+    return [Number(fromPath[1]), Number(fromPath[2]), Number(fromPath[3])];
+
+  const fromName = (k.name ?? k.label ?? '').match(
+    /\bQt-(\d+)\.(\d+)\.(\d+)\b/i
+  );
+  if (fromName)
+    return [Number(fromName[1]), Number(fromName[2]), Number(fromName[3])];
+
+  if (typeof k.qtVersionMajor === 'number') return [k.qtVersionMajor, 0, 0];
+  return undefined;
+}
+
+/**
+ * Pick the "best" Qt kit for this OS/arch from a list of kits.
+ *
+ * When `requiredQtMajor` is given (e.g. 6 for a project doing
+ * `find_package(Qt6)`), kits with a determinable different major version are
+ * excluded so that e.g. a Qt 5 kit is never picked for a Qt 6 project.
+ * Candidates are ordered newest Qt version first, so the fallback is the
+ * newest installed Qt instead of whatever happens to come first in the kits
+ * file.
+ */
+export function pickQtKit(
+  allKits: KitLike[],
+  requiredQtMajor?: number
+): string | undefined {
+  let qtKits = allKits.filter(isQtKit);
   if (qtKits.length === 0) return undefined;
+
+  if (typeof requiredQtMajor === 'number') {
+    qtKits = qtKits.filter((k) => {
+      const v = qtVersionOf(k);
+      // Keep kits whose version we cannot determine; they may still match.
+      return v === undefined || v[0] === requiredQtMajor;
+    });
+    // No kit for the required major: let the caller report/skip instead of
+    // picking a kit that is guaranteed to fail find_package(Qt<major>).
+    if (qtKits.length === 0) return undefined;
+  }
+
+  // Newest Qt first; unknown versions last. Ties keep the original order.
+  const versionKey = (k: KitLike): number => {
+    const v = qtVersionOf(k);
+    return v ? v[0] * 1_000_000 + v[1] * 1_000 + v[2] : -1;
+  };
+  qtKits = [...qtKits].sort((a, b) => versionKey(b) - versionKey(a));
 
   const nameFor = (k: KitLike) => k.name ?? k.label ?? '';
 
