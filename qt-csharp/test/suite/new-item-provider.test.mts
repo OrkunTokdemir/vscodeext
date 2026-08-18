@@ -18,7 +18,7 @@ describe('Qt Bridge New Item provider', () => {
 
   beforeEach(async () => {
     testDirectory = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), 'qt-bridge-csharp-new-item-')
+      path.join(os.tmpdir(), 'qt-csharp-new-item-')
     );
     calls = [];
   });

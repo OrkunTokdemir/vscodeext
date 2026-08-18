@@ -23,12 +23,15 @@ export function prependPathEntries(
   );
   const pathKey =
     platform === 'win32'
-      ? pathKeys.find((name) => name === 'PATH') ?? pathKeys[0] ?? 'PATH'
+      ? (pathKeys.find((name) => name === 'PATH') ?? pathKeys[0] ?? 'PATH')
       : 'PATH';
   const inheritedPath = environment[pathKey] ?? '';
 
   for (const duplicatePathKey of pathKeys) {
     if (duplicatePathKey !== pathKey) {
+      // Case-variant duplicates of PATH must be removed from the caller's
+      // environment in place, and env var names are inherently dynamic keys.
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete environment[duplicatePathKey];
     }
   }
@@ -98,6 +101,7 @@ export async function spawnProcessForTool(
         pathEntries.push(dllDirs);
       }
     } catch {
+      // qt-cpp is not available; continue without Qt DLL directories.
     }
 
     if (pathEntries.length > 0) {
@@ -129,10 +133,7 @@ export async function spawnProgramForTool(
     sanitizeVsCodeEnv?: boolean;
   }
 ): Promise<QtProcess> {
-  logger.info(
-    'Starting program:',
-    [program, ...args].join(' ')
-  );
+  logger.info('Starting program:', [program, ...args].join(' '));
 
   let options: SpawnOptions = {
     shell: false
@@ -152,7 +153,7 @@ export async function spawnProgramForTool(
     };
   }
 
-  const env = { ...process.env, ...optionsOverrides?.env };
+  let env = { ...process.env, ...optionsOverrides?.env };
 
   const pathEntries: string[] = [];
 
@@ -165,19 +166,18 @@ export async function spawnProgramForTool(
       // Do not leak VS Code/Electron launch variables into preview applications.
       // In particular, ELECTRON_RUN_AS_NODE can make a spawned app-host behave
       // like a Node/Electron helper instead of a normal Qt Bridge executable.
-      const removedNames = Object.keys(env).filter((name) => {
-        const upperName = name.toUpperCase();
-        return (
-          upperName.startsWith('ELECTRON_')
-          || upperName.startsWith('VSCODE_')
-          || upperName === 'NODE_OPTIONS'
-          || upperName === 'NODE_CHANNEL_FD'
-          || upperName === 'NODE_UNIQUE_ID'
-        );
-      });
-      for (const name of removedNames) {
-        delete env[name];
-      }
+      env = Object.fromEntries(
+        Object.entries(env).filter(([name]) => {
+          const upperName = name.toUpperCase();
+          return !(
+            upperName.startsWith('ELECTRON_') ||
+            upperName.startsWith('VSCODE_') ||
+            upperName === 'NODE_OPTIONS' ||
+            upperName === 'NODE_CHANNEL_FD' ||
+            upperName === 'NODE_UNIQUE_ID'
+          );
+        })
+      );
     }
 
     try {
@@ -186,15 +186,19 @@ export async function spawnProgramForTool(
         pathEntries.push(dllDirs);
       }
     } catch {
+      // qt-cpp is not available; continue without Qt DLL directories.
     }
-
   }
 
   if (pathEntries.length > 0) {
     prependPathEntries(env, pathEntries);
   }
 
-  if (optionsOverrides?.env || optionsOverrides?.sanitizeVsCodeEnv || pathEntries.length > 0) {
+  if (
+    optionsOverrides?.env !== undefined ||
+    optionsOverrides?.sanitizeVsCodeEnv === true ||
+    pathEntries.length > 0
+  ) {
     options = { ...options, env: env };
   }
 

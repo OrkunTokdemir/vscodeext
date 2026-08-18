@@ -13,8 +13,8 @@ import {
   type QtNewItemType
 } from 'qt-lib';
 
-export const QtBridgeProjectPresetId = 'qt-bridge-csharp/project';
-export const QtBridgeQmlPresetId = 'qt-bridge-csharp/qml';
+export const QtBridgeProjectPresetId = 'qt-csharp/project';
+export const QtBridgeQmlPresetId = 'qt-csharp/qml';
 
 const projectPreset: QtNewItemPreset = {
   id: QtBridgeProjectPresetId,
@@ -128,7 +128,7 @@ function validateName(name: string): string | undefined {
 }
 
 export class QtBridgeNewItemProvider implements QtNewItemProvider {
-  readonly id = 'qt-bridge-csharp';
+  readonly id = 'qt-csharp';
   private readonly presets = [projectPreset, qmlPreset];
 
   constructor(private readonly runner: DotNetNewRunner = runDotNetNew) {}

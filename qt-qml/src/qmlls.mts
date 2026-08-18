@@ -68,7 +68,11 @@ function normalizeQmllsPath(filePath: string | undefined): string | undefined {
   }
 
   const isWindowsDriveRoot = /^[A-Za-z]:\/$/.test(normalizedPath);
-  if (normalizedPath !== '/' && !isWindowsDriveRoot && normalizedPath.endsWith('/')) {
+  if (
+    normalizedPath !== '/' &&
+    !isWindowsDriveRoot &&
+    normalizedPath.endsWith('/')
+  ) {
     normalizedPath = normalizedPath.replace(/\/+$/, '');
   }
 
@@ -423,16 +427,14 @@ export class Qmlls {
         }
       });
 
-      this._importPaths.forEach((importPath) =>
-        importPaths.add(importPath)
-      );
+      this._importPaths.forEach((importPath) => importPaths.add(importPath));
 
       importPaths.forEach((importPath) => {
         args.push(toImportParam(importPath));
       });
 
-      const useNoCMakeCalls = this._useNoCMakeCalls
-        || configs.get<boolean>('useNoCMakeCalls', false);
+      const useNoCMakeCalls =
+        this._useNoCMakeCalls || configs.get<boolean>('useNoCMakeCalls', false);
       if (useNoCMakeCalls) {
         args.push('--no-cmake-calls');
       }
@@ -484,9 +486,9 @@ export class Qmlls {
     const sessionConfigs = this._qtBridgeSessionConfigs;
     if (!client || sessionConfigs.length === 0) {
       logger.info(
-        `Skipping Qt Bridge post-start notifications for ${this._folder.uri.fsPath}: `
-          + `client=${String(client !== undefined)}; `
-          + `sessionConfigs=${String(sessionConfigs.length)}`
+        `Skipping Qt Bridge post-start notifications for ${this._folder.uri.fsPath}: ` +
+          `client=${String(client !== undefined)}; ` +
+          `sessionConfigs=${String(sessionConfigs.length)}`
       );
       return;
     }
@@ -495,8 +497,8 @@ export class Qmlls {
       .map((config) => vscode.Uri.file(config.projectSourceDir))
       .filter(
         (uri, index, uris) =>
-          uri.toString() !== this._folder.uri.toString()
-          && uris.findIndex(
+          uri.toString() !== this._folder.uri.toString() &&
+          uris.findIndex(
             (candidate) => candidate.toString() === uri.toString()
           ) === index
       )
@@ -506,8 +508,8 @@ export class Qmlls {
       }));
     if (addedFolders.length > 0) {
       logger.info(
-        `Sending workspace/didChangeWorkspaceFolders for Qt Bridge project source dirs: `
-          + addedFolders.map((folder) => folder.uri).join(';')
+        `Sending workspace/didChangeWorkspaceFolders for Qt Bridge project source dirs: ` +
+          addedFolders.map((folder) => folder.uri).join(';')
       );
       await client.sendNotification('workspace/didChangeWorkspaceFolders', {
         event: {
@@ -529,10 +531,8 @@ export class Qmlls {
     sessionConfigs: readonly QtBridgeQmllsSessionConfig[]
   ) {
     logger.info(
-      `Sending $/addBuildDirs for ${this._folder.uri.fsPath}: `
-        + sessionConfigs
-          .flatMap((config) => config.buildDirs)
-          .join(';')
+      `Sending $/addBuildDirs for ${this._folder.uri.fsPath}: ` +
+        sessionConfigs.flatMap((config) => config.buildDirs).join(';')
     );
     await client.sendNotification('$/addBuildDirs', {
       buildDirsToSet: sessionConfigs.map((config) => ({
@@ -547,9 +547,9 @@ export class Qmlls {
     const sessionConfigs = this._qtBridgeSessionConfigs;
     if (!client?.isRunning() || sessionConfigs.length === 0) {
       logger.info(
-        `Skipping Qt Bridge build-directory refresh for ${this._folder.uri.fsPath}: `
-          + `clientRunning=${String(client?.isRunning() === true)}; `
-          + `sessionConfigs=${String(sessionConfigs.length)}`
+        `Skipping Qt Bridge build-directory refresh for ${this._folder.uri.fsPath}: ` +
+          `clientRunning=${String(client?.isRunning() === true)}; ` +
+          `sessionConfigs=${String(sessionConfigs.length)}`
       );
       return;
     }
