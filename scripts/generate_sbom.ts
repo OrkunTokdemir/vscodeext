@@ -47,18 +47,10 @@ function main() {
     '--output-format JSON',
     `--output-file "${sbomFile}"`
   ];
-  // Invoke the root-pinned binary directly: `npx` ignores the root devDependency
-  // here because each extension has its own package.json and is not an npm
-  // workspace, so it would otherwise resolve against the registry's "latest".
-  const cyclonedxBinName =
-    process.platform === 'win32' ? 'cyclonedx-npm.cmd' : 'cyclonedx-npm';
-  const cyclonedxBin = path.join(
-    repoRoot,
-    'node_modules',
-    '.bin',
-    cyclonedxBinName
-  );
-  execSync(`"${cyclonedxBin}" ${args.join(' ')}`, {
+  // npx (npm >= 9) walks up parent directories looking for node_modules/.bin,
+  // so the root-pinned cyclonedx-npm is found although cwd is the extension
+  // root. --no makes it fail instead of fetching "latest" from the registry.
+  execSync(`npx --no -- cyclonedx-npm ${args.join(' ')}`, {
     cwd: targetExtensionRoot,
     stdio: 'inherit'
   });
