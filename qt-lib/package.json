@@ -1,6 +1,7 @@
 {
   "name": "qt-lib",
   "version": "1.19.0",
+  "license": "LicenseRef-Qt-Commercial OR LGPL-3.0-only",
   "main": "out/index.js",
   "types": "out/index.d.ts",
   "files": [

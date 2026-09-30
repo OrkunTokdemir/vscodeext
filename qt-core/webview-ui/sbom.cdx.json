@@ -93,6 +93,12 @@
       "name": "qt-core-webview",
       "version": "0.0.0",
       "bom-ref": "qt-core-webview@0.0.0",
+      "licenses": [
+        {
+          "expression": "LicenseRef-Qt-Commercial OR LGPL-3.0-only",
+          "acknowledgement": "declared"
+        }
+      ],
       "purl": "pkg:npm/qt-core-webview@0.0.0",
       "properties": [
         {

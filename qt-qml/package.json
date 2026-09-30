@@ -3,6 +3,7 @@
   "displayName": "Qt QML",
   "description": "Qt QML Support",
   "version": "1.19.0",
+  "license": "LicenseRef-Qt-Commercial OR LGPL-3.0-only",
   "homepage": "https://www.qt.io/",
   "icon": "res/icons/qt.png",
   "publisher": "theqtcompany",

@@ -2,6 +2,7 @@
   "name": "qt-core-webview",
   "private": true,
   "version": "0.0.0",
+  "license": "LicenseRef-Qt-Commercial OR LGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",

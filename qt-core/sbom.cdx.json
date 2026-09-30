@@ -94,6 +94,12 @@
       "version": "1.19.0",
       "bom-ref": "qt-core@1.19.0",
       "description": "Qt Core",
+      "licenses": [
+        {
+          "expression": "LicenseRef-Qt-Commercial OR LGPL-3.0-only",
+          "acknowledgement": "declared"
+        }
+      ],
       "purl": "pkg:npm/qt-core@1.19.0?vcs_url=git%2Bhttps%3A%2F%2Fgithub.com%2Fqt-labs%2Fvscodeext.git",
       "externalReferences": [
         {
@@ -3159,6 +3165,12 @@
       "name": "qt-lib",
       "version": "1.19.0",
       "bom-ref": "qt-core@1.19.0|qt-lib@1.19.0",
+      "licenses": [
+        {
+          "expression": "LicenseRef-Qt-Commercial OR LGPL-3.0-only",
+          "acknowledgement": "declared"
+        }
+      ],
       "purl": "pkg:npm/qt-lib@1.19.0",
       "properties": [
         {
