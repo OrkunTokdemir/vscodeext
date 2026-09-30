@@ -42,7 +42,7 @@
     "pretest:qt-lib": "cd qt-lib && npm run pretest",
     "pretest:all": "concurrently \"npm run pretest\" \"npm run pretest:qt-lib\" \"npm run pretest:qt-core\" \"npm run pretest:qt-cpp\" \"npm run pretest:qt-python\" \"npm run pretest:qt-ui\" \"npm run pretest:qt-qml\" \"npm run pretest:qt-csharp\"",
     "pretest:all_sync": "npm run pretest && npm run pretest:qt-lib && npm run pretest:qt-core && npm run pretest:qt-cpp && npm run pretest:qt-python && npm run pretest:qt-ui && npm run pretest:qt-qml && npm run pretest:qt-csharp",
-    "ci-lint:qt-core": "ts-node ./scripts/ci_lint.ts --dir=\"qt-core\" --exclude_licenses=\"qt-core\"",
+    "ci-lint:qt-core": "ts-node ./scripts/ci_lint.ts --dir=\"qt-core\" --exclude_licenses=\"qt-core\" && npm run checkLicenses -- --dir=\"qt-core/webview-ui\" --exclude=\"qt-core-webview\" && npm run checkSbom -- --dir=\"qt-core/webview-ui\"",
     "ci-lint:qt-qml": "ts-node ./scripts/ci_lint.ts --dir=\"qt-qml\" --exclude_licenses=\"qt-qml\"",
     "ci-lint:qt-cpp": "ts-node ./scripts/ci_lint.ts --dir=\"qt-cpp\" --exclude_licenses=\"qt-cpp\"",
     "ci-lint:qt-python": "ts-node ./scripts/ci_lint.ts --dir=\"qt-python\" --exclude_licenses=\"qt-python\"",
