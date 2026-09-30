@@ -7,11 +7,15 @@ import { program } from 'commander';
 import { execSync } from 'child_process';
 
 function main() {
-  program.option('-d, --dir <string>', 'Path to target extension root');
+  program.requiredOption('-d, --dir <string>', 'Path to target extension root');
   program.parse(process.argv);
   const options = program.opts();
   const extensionRoot = path.resolve(__dirname, '../');
-  const targetExtensionRoot = path.join(extensionRoot, options.dir as string);
+  // --dir is relative to the repository root, or absolute.
+  const targetExtensionRoot = path.resolve(
+    extensionRoot,
+    options.dir as string
+  );
   const temp = path.join(targetExtensionRoot, 'sbom_temp.cdx.json');
   let isCatchedError = false;
   try {

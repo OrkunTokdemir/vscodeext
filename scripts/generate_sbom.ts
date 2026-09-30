@@ -27,15 +27,16 @@ function removeNpmToolEntry(sbomFile: string) {
 
 function main() {
   program.option('-o, --output <string>', 'Path to output file');
-  program.option('-d, --dir <string>', 'Path to target extension root');
+  program.requiredOption('-d, --dir <string>', 'Path to target extension root');
   program.parse(process.argv);
   const options = program.opts();
-  const outputFile = options.output as string;
-  const targetExtensionRoot = options.dir as string;
-  const sbomFile =
-    outputFile && outputFile !== ''
-      ? path.resolve(outputFile)
-      : path.resolve(targetExtensionRoot, 'sbom.cdx.json');
+  const outputFile = options.output as string | undefined;
+  // --dir is relative to the repository root, or absolute.
+  const repoRoot = path.resolve(__dirname, '../');
+  const targetExtensionRoot = path.resolve(repoRoot, options.dir as string);
+  const sbomFile = outputFile
+    ? path.resolve(outputFile)
+    : path.resolve(targetExtensionRoot, 'sbom.cdx.json');
 
   console.log('Generating SBOM...');
   const args = [
@@ -49,11 +50,10 @@ function main() {
   // Invoke the root-pinned binary directly: `npx` ignores the root devDependency
   // here because each extension has its own package.json and is not an npm
   // workspace, so it would otherwise resolve against the registry's "latest".
-  const extensionRoot = path.resolve(__dirname, '../');
   const cyclonedxBinName =
     process.platform === 'win32' ? 'cyclonedx-npm.cmd' : 'cyclonedx-npm';
   const cyclonedxBin = path.join(
-    extensionRoot,
+    repoRoot,
     'node_modules',
     '.bin',
     cyclonedxBinName
