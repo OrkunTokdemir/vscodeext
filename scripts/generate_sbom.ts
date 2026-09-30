@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { program } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 
 interface Property {
   name: string;
@@ -45,6 +45,10 @@ interface LinkedPackage {
   root: string;
 }
 
+interface NpmLsOutput {
+  problems?: string[];
+}
+
 const packagePathProperty = 'cdx:npm:package:path';
 
 function readJson<T>(file: string): T {
@@ -73,6 +77,47 @@ function runCyclonedx(
     cwd: packageRoot,
     stdio: 'inherit'
   });
+}
+
+// Problems npm ls reports look like
+//   missing: winston@^3.15.0, required by qt-lib@1.19.0
+//   invalid: eslint@8.57.1 /repo/qt-lib/node_modules/eslint
+function isLinkProblem(problem: string, links: LinkedPackage[]): boolean {
+  const normalized = problem.replace(/\\/g, '/');
+  return links.some(
+    (link) =>
+      normalized.includes(`required by ${link.name}@`) ||
+      normalized.includes(`/${link.name}/node_modules/`)
+  );
+}
+
+// --ignore-npm-errors makes cyclonedx-npm swallow every problem npm found in
+// the tree, and each problem means a component is missing from the SBOM. The
+// ones caused by a file: link are expected, see graftLinkedPackage. Anything
+// else fails the run. npm's JSON output is used rather than its stderr because
+// the log level, for example npm run -s, decides whether stderr shows them.
+function checkNpmProblems(packageRoot: string, links: LinkedPackage[]) {
+  const result = spawnSync(
+    'npm ls --json --all --package-lock-only --omit=dev',
+    {
+      cwd: packageRoot,
+      shell: true,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  const problems = (JSON.parse(result.stdout) as NpmLsOutput).problems ?? [];
+  const unexpected = problems.filter(
+    (problem) => !isLinkProblem(problem, links)
+  );
+  if (unexpected.length > 0) {
+    throw new Error(
+      `npm reported problems the SBOM would not reflect:\n${unexpected.join('\n')}`
+    );
+  }
 }
 
 // Runtime dependencies declared with a file: spec, currently only qt-lib.
@@ -261,7 +306,11 @@ function main() {
   console.log('Generating SBOM...');
   const links = findLinkedPackages(targetExtensionRoot);
   // npm reports the dependencies of a file: link as missing or invalid, see
-  // graftLinkedPackage. Without links every npm error is a real problem.
+  // graftLinkedPackage. Without links every npm error is a real problem and
+  // cyclonedx-npm fails on it by itself.
+  if (links.length > 0) {
+    checkNpmProblems(targetExtensionRoot, links);
+  }
   runCyclonedx(targetExtensionRoot, sbomFile, links.length > 0);
   const sbom = readJson<Sbom>(sbomFile);
 
