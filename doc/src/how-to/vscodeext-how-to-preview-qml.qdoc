@@ -103,5 +103,13 @@
     To reload the preview window, go to \uicontrol {Command Palette}, and select
     \uicontrol {Qt: Reload QML Preview}.
 
+    \section1 Change the animation speed
+
+    The status bar shows the current animation speed of the preview, for
+    example \c 1x for normal speed. To change it, select the status bar item,
+    or go to \uicontrol {Command Palette}, and select
+    \uicontrol {Qt: Set QML Preview Animation Speed}. Pick a preset or enter
+    a custom factor. The speed is kept when the preview application restarts.
+
     \sa {Qt settings}
 */

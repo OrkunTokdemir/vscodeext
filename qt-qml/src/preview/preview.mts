@@ -50,6 +50,8 @@ let relaunchCurrentPreview: (() => Promise<boolean>) | undefined;
 // next connection manager and replayed to restore the UI state.
 // Maps to the event storage in Qt Creator's QmlPreviewPlugin.
 let pendingReplayEvents: RecordedInputEvent[] | undefined;
+// Animation speed preserved across a preview restart.
+let pendingAnimationSpeed: number | undefined;
 
 function isPreviewStartingOrRunning() {
   return (
@@ -89,6 +91,14 @@ function createPreviewManagerForBuildDirs(projectBuildDirs: readonly string[]) {
     manager.seedRecordedEvents(pendingReplayEvents);
   }
   pendingReplayEvents = undefined;
+
+  if (pendingAnimationSpeed !== undefined) {
+    manager.setAnimationSpeed(pendingAnimationSpeed);
+    ui.updateAnimationSpeed(pendingAnimationSpeed);
+  } else {
+    ui.updateAnimationSpeed(1);
+  }
+  pendingAnimationSpeed = undefined;
 
   return manager;
 }
@@ -648,6 +658,7 @@ async function restartPreviewSessionImpl(manager: QmlPreviewConnectionManager) {
   );
   cleanupSession();
   pendingReplayEvents = events;
+  pendingAnimationSpeed = manager.animationSpeed;
 
   try {
     if (!(await relaunch())) {
@@ -909,6 +920,29 @@ export function registerReloadQmlPreviewCommand() {
 
       previewManager.rerun();
       ui.showReloaded();
+    }
+  );
+}
+
+export function registerSetQmlPreviewAnimationSpeedCommand() {
+  return vscode.commands.registerCommand(
+    `${EXTENSION_ID}.setQmlPreviewAnimationSpeed`,
+    async () => {
+      telemetry.sendAction('setQmlPreviewAnimationSpeed');
+
+      if (!previewManager?.isConnected()) {
+        ui.showNotConnected();
+        return;
+      }
+
+      const manager = previewManager;
+      const speed = await ui.promptForAnimationSpeed(manager.animationSpeed);
+      if (speed === undefined || !manager.isConnected()) {
+        return;
+      }
+
+      manager.setAnimationSpeed(speed);
+      ui.updateAnimationSpeed(speed);
     }
   );
 }

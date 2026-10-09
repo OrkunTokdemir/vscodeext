@@ -107,6 +107,9 @@ export class QmlPreviewClient
   private _replayTimer: Timer | undefined;
   private _events: RecordedInputEvent[] = [];
   private _numExpectedEvents = 0;
+  // The animation speed chosen by the user. The replay temporarily speeds
+  // animations up and returns to this value afterwards.
+  private _animationSpeed = 1;
 
   constructor(connection: QmlDebugConnection, requestInPlaceUpdates = true) {
     super('QmlPreview', connection);
@@ -331,13 +334,45 @@ export class QmlPreviewClient
   }
 
   /**
+   * The animation speed chosen by the user (1 is normal speed).
+   */
+  get animationSpeed() {
+    return this._animationSpeed;
+  }
+
+  /**
    * Set animation speed factor
    * Maps to QmlPreview::QmlPreviewClient::setAnimationSpeed()
-   *
+   */
+  setAnimationSpeed(factor: number) {
+    this._animationSpeed = factor;
+    this.sendAnimationSpeed(factor);
+  }
+
+  /**
+   * Remember an animation speed chosen in a previous session, without
+   * sending it. It is applied once the service is ready, see
+   * applyAnimationSpeed().
+   */
+  presetAnimationSpeed(factor: number) {
+    this._animationSpeed = factor;
+  }
+
+  /**
+   * Send the chosen animation speed if it differs from the default, e.g.
+   * to keep the speed across a restart of the preview application.
+   */
+  private applyAnimationSpeed() {
+    if (this._animationSpeed !== 1) {
+      this.sendAnimationSpeed(this._animationSpeed);
+    }
+  }
+
+  /**
    * QDataStream serializes float with double precision (big-endian) for
    * the stream versions negotiated by the debug connection.
    */
-  setAnimationSpeed(factor: number) {
+  private sendAnimationSpeed(factor: number) {
     logger.info('Sending AnimationSpeed command:', String(factor));
     const packet = new Packet();
     packet.writeInt8(QmlPreviewCommand.AnimationSpeed);
@@ -374,7 +409,7 @@ export class QmlPreviewClient
         if (this._events.length < this._numExpectedEvents) {
           return;
         }
-        this.setAnimationSpeed(1);
+        this.sendAnimationSpeed(this._animationSpeed);
         this._replayTimer?.stop();
       });
     }
@@ -406,7 +441,7 @@ export class QmlPreviewClient
       'recorded input events for URL:',
       `"${url ?? '<last loaded>'}"`
     );
-    this.setAnimationSpeed(1000);
+    this.sendAnimationSpeed(1000);
     this.doLoad(url);
     for (const event of recorded) {
       this._replayClient?.sendEvent(event);
@@ -493,6 +528,8 @@ export class QmlPreviewClient
           settings.enableInPlaceUpdates ? 'enabled' : 'disabled'
         );
         this._confirmedSettings = settings;
+        // Before the replay, which speeds animations up temporarily.
+        this.applyAnimationSpeed();
         this.configureEventReplay();
         this._confirmationReported.fire(settings);
         break;
@@ -523,11 +560,12 @@ export class QmlPreviewClient
     logger.info('QmlPreview state changed:', QmlDebugConnectionState[state]);
     if (state === QmlDebugConnectionState.Unavailable) {
       this._debugServiceUnavailable.fire();
-    } else if (
-      state === QmlDebugConnectionState.Enabled &&
-      this._requestInPlaceUpdates
-    ) {
-      this.announceConfiguration();
+    } else if (state === QmlDebugConnectionState.Enabled) {
+      if (this._requestInPlaceUpdates) {
+        this.announceConfiguration();
+      } else {
+        this.applyAnimationSpeed();
+      }
     }
   }
 

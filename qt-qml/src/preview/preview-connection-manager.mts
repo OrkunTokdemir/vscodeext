@@ -68,6 +68,7 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
   private readonly _settings: QmlPreviewManagerSettings = {};
   private _buildDirs: string[] = [];
   private _hotReloadEnabled = true;
+  private _animationSpeed = 1;
   // Input events preserved from a previous session, replayed after the
   // debug service confirms the configuration. Maps to the event storage in
   // Qt Creator's QmlPreviewPlugin.
@@ -201,6 +202,8 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
       connection,
       this._hotReloadEnabled
     );
+
+    this._previewClient.presetAnimationSpeed(this._animationSpeed);
 
     // Maybe we are starting after a hot reload failure, so we already have
     // the events to replay. Hand them to the client, so that they can be
@@ -337,7 +340,16 @@ export class QmlPreviewConnectionManager extends QmlDebugConnectionManager {
    */
   setAnimationSpeed(factor: number) {
     logger.info('Setting animation speed:', String(factor));
+    this._animationSpeed = factor;
     this._previewClient?.setAnimationSpeed(factor);
+  }
+
+  /**
+   * The animation speed chosen by the user. It can be set before the
+   * connection is created, to keep it across a restart.
+   */
+  get animationSpeed() {
+    return this._animationSpeed;
   }
 
   /**

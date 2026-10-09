@@ -335,4 +335,46 @@ describe('QmlPreviewClient', () => {
     rig.nextMessage('CanvasFrameRate'); // recording request
     expectReplaySequence(rig, clickEvents);
   });
+
+  it('sends the chosen animation speed', () => {
+    rig = new PreviewTestRig();
+    rig.client.setAnimationSpeed(0.5);
+
+    const packet = rig.nextMessage('QmlPreview');
+    expect(packet.readInt8()).to.equal(QmlPreviewCommand.AnimationSpeed);
+    expect(packet.readDoubleBE()).to.equal(0.5);
+    expect(rig.client.animationSpeed).to.equal(0.5);
+  });
+
+  it('applies a preset animation speed once the configuration is confirmed', () => {
+    rig = new PreviewTestRig();
+    rig.client.presetAnimationSpeed(2);
+    expect(rig.messageCount).to.equal(0);
+
+    rig.confirmConfiguration();
+
+    const packet = rig.nextMessage('QmlPreview');
+    expect(packet.readInt8()).to.equal(QmlPreviewCommand.AnimationSpeed);
+    expect(packet.readDoubleBE()).to.equal(2);
+  });
+
+  it('returns to the chosen animation speed after a replay', async () => {
+    rig = new PreviewTestRig();
+    const clickEvents = mouseClickEvents();
+    rig.client.presetAnimationSpeed(2);
+    rig.client.setRecordedEvents(clickEvents);
+
+    rig.confirmConfiguration();
+    rig.nextMessage('QmlPreview'); // the chosen speed
+    rig.nextMessage('CanvasFrameRate'); // recording request
+    expectReplaySequence(rig, clickEvents);
+    for (const event of clickEvents) {
+      rig.feedInputEventBack(event);
+    }
+
+    await delay(300);
+    const packet = rig.nextMessage('QmlPreview');
+    expect(packet.readInt8()).to.equal(QmlPreviewCommand.AnimationSpeed);
+    expect(packet.readDoubleBE()).to.equal(2);
+  });
 });

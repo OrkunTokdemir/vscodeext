@@ -102,6 +102,11 @@
         "category": "Qt"
       },
       {
+        "command": "qt-qml.setQmlPreviewAnimationSpeed",
+        "title": "%qt-qml.command.setQmlPreviewAnimationSpeed.title%",
+        "category": "Qt"
+      },
+      {
         "command": "qt-qml.startQmlProfiler",
         "title": "%qt-qml.command.startQmlProfiler.title%",
         "category": "Qt",
@@ -142,6 +147,10 @@
         },
         {
           "command": "qt-qml.clearQmlPreviewCache",
+          "when": "qt-qml.qmlPreviewRunning"
+        },
+        {
+          "command": "qt-qml.setQmlPreviewAnimationSpeed",
           "when": "qt-qml.qmlPreviewRunning"
         },
         {
