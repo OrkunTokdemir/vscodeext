@@ -1,0 +1,40 @@
+name: Backport
+
+on:
+  # Backporting requires write permissions and a pull_request_target trigger.
+  # The steps only run on merged pull requests, so the backported changes
+  # have already been reviewed. No code from the pull request is executed.
+  pull_request_target:
+    types: [closed, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  backport:
+    name: Backport pull request
+    permissions:
+      contents: write
+      pull-requests: write
+    if: >
+      github.repository == 'OrkunTokdemir/vscodeext' &&
+      github.event.pull_request.merged == true &&
+      (github.event.action != 'labeled' ||
+       startsWith(github.event.label.name, 'backport '))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create backport pull requests
+        uses: korthout/backport-action@8560fb503c275d433c56f05a2f64850093baa9f7 # v4.7.0
+        with:
+          # Only release branches such as 1.17.1 can be targeted.
+          label_pattern: '^backport (\d+\.\d+\.\d+)$'
+          pull_title: '[${target_branch}] ${pull_title}'
+          pull_description: |-
+            Automatic backport to `${target_branch}`, triggered by a label in #${pull_number}.
+          copy_labels_pattern: '^(?!backport ).*'
+          # The pull request is merged once the required checks pass.
+          # Pull requests opened with GITHUB_TOKEN do not start the CI
+          # workflows by themselves, so they have to be approved to run.
+          auto_merge_enabled: true
+          auto_merge_method: rebase
